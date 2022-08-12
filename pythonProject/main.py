@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
 import scipy.signal as sg
 
 f_s = 1000
@@ -29,6 +28,11 @@ def rms(arr):
     return np.sqrt(s / len(arr))
 
 #вычисляем отношение сигнал шум
+#альтернативная формула
+var1 = np.var(clean_signal)
+var2 = np.var(noise)
+print(10*np.log10((var1**2) / (var2**2)))
+
 snr_db = 20*np.log10(rms(clean_signal) / rms(noise))
 print("SNR in dB: ", snr_db)
 
@@ -102,11 +106,12 @@ plt.show()
 plt.figure()
 plt.plot(signal)
 # plt.plot(filtered_conv)
-plt.plot(np.concatenate(
-    (my_filter(signal[0:153],h),
-     my_filter(signal[153:476],h),
-     my_filter(signal[476:length],h))
-), color='red')
+plt.plot(np.convolve(signal, h, 'same'))
+# plt.plot(np.concatenate(
+#     (my_filter(signal[0:153],h),
+#      my_filter(signal[153:476],h),
+#      my_filter(signal[476:length],h))
+# ), color='red')
 #plt.plot(filtered_scipy, color='black')
 plt.plot(filtered_fft, color='green')
 plt.show()
