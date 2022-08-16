@@ -1,294 +1,170 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.constants
-import scipy.signal as sg
-
-def fft_filtering(sg, h):
-    length = len(sg)
-    sg_fft = np.fft.fft(sg, length)
-    h_fft = np.fft.fft(h, length)
-    mul_fft = np.multiply(sg_fft, h_fft)
-    return np.fft.ifft(mul_fft)
-
-# f_c = 100
-
-f_s = 100_000
-def psd(who):
-    w, f = np.fft.fftshift(sg.welch(who, fs=f_s, return_onesided=False, detrend=False))
-    plt.plot(f, 10 * np.log10(w))
-def my_psd(who):
-    w, f = np.fft.fftshift(sg.welch(who, fs=f_s, return_onesided=False, detrend=False))
-    return w, f
-
-local_f_c = 10_000
-time = np.linspace(start=0,stop=1, num=f_s)
-samples = 20000
-
-# x = np.random.default_rng().normal(loc=0.0, scale=0.5, size=samples)
-h = np.genfromtxt('h.csv', delimiter=',')
-# x = fft_filtering(x, h)
-# # x = np.convolve(x,h,'same')
-# psd(x)
-# plt.show()
-#
-# carrier = np.cos(2 * np.pi * local_f_c * time[0:samples])
-# y= x*carrier
-# fig, ax = plt.subplots()
-# ax.plot(x, label='input')
-# ax.plot(y, label='modulated')
-# ax.legend()
-# plt.show()
-#
-# u = y * 2 * np.cos(2 * np.pi * local_f_c * time[0:samples])
-# psd(u)
-# plt.show()
-#
-h1 = np.genfromtxt('h1.csv', delimiter=',')
-# # x_demod = fft_filtering(u, h1)
-# x_demod = np.convolve(u, h1,'same')
-#
-# _, ax = plt.subplots()
-# ax.plot(x, label='input')
-# ax.plot(x_demod, label='demod')
-# ax.legend()
-# plt.show()
-#
-# ################## QAM-part ###############################
-# x = np.random.default_rng().normal(loc=0.0, scale=0.5, size=samples)
-# x_i = np.convolve(x,h,'same')
-# x = np.random.default_rng().normal(loc=0.0, scale=0.5, size=samples)
-# x_q = np.convolve(x,h,'same')
-#
-# y = x_i * np.cos(2*np.pi*local_f_c*time[0:samples]) + x_q * np.sin(2*np.pi*local_f_c*time[0:samples])
-# psd(y)
-# plt.show()
-#
-# u_i = y * 2 * np.cos(2*np.pi*local_f_c*time[0:samples])
-# u_q = y * 2 * np.sin(2*np.pi*local_f_c*time[0:samples])
-#
-# x_i_demod = np.convolve(u_i, h1, 'same')
-# x_q_demod = np.convolve(u_q, h1, 'same')
-#
-# _, ax = plt.subplots()
-# ax.plot(x_i, label='x_i')
-# ax.plot(x_i_demod, label='x_i demod')
-# ax.plot(x_q, label='x_q')
-# ax.plot(x_q_demod, label='x_q demod')
-# ax.legend()
-# plt.show()
-#
-# #######Complex Quadrature Amplitude Modulation###########
-# x = np.random.default_rng().normal(loc=0.0, scale=0.5, size=samples)
-# x_i = np.convolve(x,h,'same')
-# x = np.random.default_rng().normal(loc=0.0, scale=0.5, size=samples)
-# x_q = np.convolve(x,h,'same')
-#
-# x = x_i + 1j*x_q
-# y = np.real(x * np.exp(-1j*2*np.pi*local_f_c*time[0:samples]))
-#
-# u = y * 2 * np.exp(1j*2*np.pi*local_f_c*time[0:samples])
-# x_demod = np.convolve(u, h1, 'same')
-# x_i_demod = np.real(x_demod)
-# x_q_demod = np.imag(x_demod)
-#
-# _, ax = plt.subplots()
-# ax.plot(x_i, label='x_i input')
-# ax.plot(x_q, label='x_q input')
-# ax.plot(x_i_demod, label='x_i demod')
-# ax.plot(x_q_demod, label='x_q demod')
-# ax.legend()
-# plt.show()
-
-
-
-################## Additive White Gaussian Noise ####################
-
-# x = np.random.default_rng().normal(loc=0.0, scale=0.5, size=samples)
-# x_i = np.convolve(x,h,'same')
-# x = np.random.default_rng().normal(loc=0.0, scale=0.5, size=samples)
-# x_q = np.convolve(x,h,'same')
-#
-# x = x_i + 1j*x_q
-# # print(np.std(x_i))
-# # print(np.std(x_q))
-# n = np.random.default_rng().normal(loc=0.0, scale=0.025, size=samples)
-#
-# y = np.real(x * np.exp(-1j*2*np.pi*local_f_c*time[0:samples])) + n
-#
-# u = y * 2 * np.exp(1j*2*np.pi*local_f_c*time[0:samples])
-# x_demod = np.convolve(u, h1, 'same')
-# x_i_demod = np.real(x_demod)
-# x_q_demod = np.imag(x_demod)
-#
-# _, ax = plt.subplots(2)
-# ax[0].set_title('Modulation/demodulation with AWGN')
-# ax[0].plot(x_i, label='x_i input')
-# ax[0].plot(x_i_demod, label='x_i demod')
-# ax[1].plot(x_q, label='x_q input')
-# ax[1].plot(x_q_demod, label='x_q demod')
-# ax[0].legend()
-# ax[1].legend()
-# plt.show()
-#
-# _, ax = plt.subplots(2)
-# ax[0].set_title('PSD of input/demodulated')
-# w, f = my_psd(x_i)
-# ax[0].plot(f, 10 * np.log10(w), label='input x_i')
-# w, f = my_psd(x_i_demod)
-# ax[0].plot(f, 10 * np.log10(w), label='demodulated x_i')
-#
-# w, f = my_psd(x_q)
-# ax[1].plot(f, 10 * np.log10(w), label='input x_q')
-# w, f = my_psd(x_q_demod)
-# ax[1].plot(f, 10 * np.log10(w), label='demodulated x_q')
-#
-# ax[0].legend()
-# ax[1].legend()
-# plt.show()
-
 
 ############# 4-ary Quadrature Amplitude Modulation ###################
 
-f_b = 20000
+EbN0_dB = 10
+bits_num = 1_000_000
 bits_per_symbol = 2
-f_symb = f_b // bits_per_symbol
-samples_per_symbol = f_s // f_symb
-symbols = samples // samples_per_symbol
-print("symbols: " + str(symbols))
-bits = symbols * 2
-np.random.seed(0)
-b = np.random.randint(low=0,high=2,size=bits)
+constellation_points = [1 + 1j, -1 + 1j, -1 - 1j, 1 - 1j]
+bits_constellation_points = [0b00,0b01,0b10,0b11]
+symbols_num = bits_num // bits_per_symbol
+seed = 0
 
-b_1 = b[::2]
-b_2 = b[1::2]
+def gen_bits(seed, bits_num):
+    np.random.seed(0)
+    return np.random.randint(low=0, high=2, size=bits_num)
 
-sn = -2 *(b_1-0.5) + 1j*-2*(b_2-0.5)
-st = [(0 if (i % samples_per_symbol != 0) else sn[i // samples_per_symbol] ) for i in range(len(sn) * samples_per_symbol)]
-st = np.concatenate((np.zeros(samples_per_symbol // 2),st),axis=0)
 
-h = np.genfromtxt('impls_interpol.csv', delimiter=',')
-x = np.convolve(st, h,'same')
+bits = gen_bits(0, bits_num)
 
-_, ax = plt.subplots(2)
-ax[0].set_title('real part')
-ax[0].plot(np.real(st), label='discrete')
-ax[0].plot(np.real(x), label='analog')
 
-ax[1].set_title('imag part')
-ax[1].plot(np.imag(st), label='discrete')
-ax[1].plot(np.imag(x), label='analog')
+def map_bits(bits):
+    x = 2 * bits[0] + 1 * bits[1]
+    if x == 0b00:
+        return 1 + 1j
+    elif x == 0b01:
+        return -1 + 1j
+    elif x == 0b10:
+        return -1 - 1j
+    elif x == 0b11:
+        return 1 - 1j
 
-ax[0].legend()
-ax[1].legend()
-plt.show()
-#### вся предыдущая часть это генерация аналогового сигнала из потока битов
 
-y = np.real(x[0:samples] * np.exp(-1j*2*np.pi*local_f_c*time[0:samples]))
+# signal = [map_bits(bits[2 * i: 2 * i + 2]) for i in range(symbols_num)]
 
-#вычисляем мощность сигнала
-#то, что тут получается мне совершенно не нравится
 def power(sig):
     abs = np.abs(sig)
-    return ((abs**2).sum()) / len(sig)
+    return ((abs ** 2).sum()) / len(sig)
 
-SNRdb = 3
-gamma = 10**(SNRdb/10)
-P = power(y)
-E_b = P * (1 / f_symb)
-N_0 = P / gamma
-print(gamma, P, E_b, N_0, 10*np.log10(E_b / N_0))
+def calc_noise_power(EbN0_dB, signal):
+    EsN0_dB = EbN0_dB + 10 * np.log10(bits_per_symbol)
+    SNR_dB = EsN0_dB
+    SNR = 10 ** (SNR_dB / 10)
+    P_sig = power(signal)
+    P_noise = P_sig / SNR
+    return P_noise
 
-n = np.random.default_rng().normal(loc=0.0, scale=np.sqrt(N_0 / 2), size=samples)
+def awgn(symbols_num, var, seed):
+    np.random.seed(seed)
+    return np.random.normal(loc=0.0, scale=np.sqrt(var), size=symbols_num) + \
+    1j * np.random.normal(loc=0.0, scale=np.sqrt(var), size=symbols_num)
 
-psd(y)
-psd(n)
-plt.show()
-
-y += n
-
-u = y * 2 * np.exp(1j*2*np.pi*local_f_c*time[0:samples])
-
-x_demod = np.convolve(u, h1, 'same')
-
-_, ax = plt.subplots(2)
-ax[0].set_title('real part')
-ax[0].plot(np.real(x), label='x')
-ax[0].plot(np.real(x_demod), label='x_demod')
-
-ax[1].set_title('imag part')
-ax[1].plot(np.imag(x), label='x')
-ax[1].plot(np.imag(x_demod), label='x_demod')
-
-ax[0].legend()
-ax[1].legend()
-plt.show()
-
-sampled = x_demod[(samples_per_symbol // 2)::samples_per_symbol]
-b_1_hat = (np.real(sampled) < 0) * 1
-b_2_hat = (np.imag(sampled) < 0) * 1
-b_hat = [(b_1_hat[i//2] if i % 2 == 0 else b_2_hat[i//2]) for i in range(2 * len(b_1_hat))]
-
-bit_errors_num = (b ^ b_hat).sum()
-print("BER = " + str(bit_errors_num / bits))
+def distance(p1, p2):
+    return np.sqrt(
+        (np.real(p1) - np.real(p2)) ** 2 + (np.imag(p1) - np.imag(p2)) ** 2
+    )
 
 
+def guess(p):
+    dists = list(map(lambda x: distance(x, p), constellation_points))
+    m = min(dists)
+    i = dists.index(m)
+    return constellation_points[i]
+
+demodulate = np.vectorize(guess)
+
+def symbol_error_rate(x, y):
+    return np.count_nonzero(x-y) / len(x)
 
 
+def symbol_to_bits(s):
+    i = constellation_points.index(s)
+    return bits_constellation_points[i]
 
-# symbs = 6
-# # bits = np.random.randint(0, high=2, size=symbs*4)
-# bits = [1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-#
-#
-# def get_amplitude(a, b):
-#     if a == 0:
-#         if b == 0:
-#             return -0.821
-#         else:
-#             return -0.22
-#     else:
-#         if b == 0:
-#             return 0.22
-#         else:
-#             return 0.821
-#
-#
-# def modulate(bit_input):
-#     output = np.empty(shape=[0])
-#
-#     length = len(bit_input)
-#     symbols = length // 4
-#     for i in range(symbols):
-#         q0 = bit_input[i * 4 + 0]
-#         q1 = bit_input[i * 4 + 1]
-#         i0 = bit_input[i * 4 + 2]
-#         i1 = bit_input[i * 4 + 3]
-#         q_ampl = get_amplitude(q0, q1)
-#         i_ampl = get_amplitude(i0, i1)
-#         T = 1 / f_c
-#         time = np.linspace(start=i * T, stop=(i + 1) * T, num=50)
-#         discrete_symbol = q_ampl * np.cos(2 * np.pi * f_c * time) + i_ampl * np.sin(2 * np.pi * f_c * time)
-#
-#         output = np.concatenate((output, discrete_symbol), axis=0)
-#     return output
-#
-#
-# modulated_sig = modulate(bits)
-# cos = np.cos(2*np.pi*f_c*np.linspace(start=0, stop=(1 / f_c) *symbs, num=len(modulated_sig)))
-# sin = np.sin(2*np.pi*f_c*np.linspace(start=0, stop=(1 / f_c) *symbs, num=len(modulated_sig)))
-# r_i = modulated_sig * cos
-# r_q = modulated_sig * sin
-# plt.plot(modulated_sig)
-# plt.plot(r_i)
-# plt.plot(r_q,color='red')
+
+def symbols_to_bits(symbols):
+    bits = np.zeros(len(symbols) * bits_per_symbol,int)
+    j = 0
+    for i in range(len(symbols)):
+        s = symbols[i]
+        v = bits_constellation_points[constellation_points.index(s)]
+        b0 = v & 0b01
+        b1 = (v & 0b10) >> 1
+        bits[j] = b1
+        j+=1
+        bits[j] = b0
+        j+=1
+    return bits
+
+def bit_error_rate(input_bits, output_bits):
+    return np.count_nonzero(input_bits-output_bits) / len(input_bits)
+
+
+def plot_ber_curve(input_bits):
+    BERs = []
+    input_signal = [map_bits(input_bits[2 * i: 2 * i + 2]) for i in range(symbols_num)]
+    for EbN0_dB in range(1,11):
+        P_noise = calc_noise_power(EbN0_dB, input_signal)
+        n = awgn(symbols_num, P_noise / 2, 0)
+        dirty_sig = input_signal + n
+
+        demodulated_signal = demodulate(dirty_sig)
+        received_bits = symbols_to_bits(demodulated_signal)
+        ber = bit_error_rate(input_bits, received_bits)
+        BERs.append(ber)
+    plt.yscale("log")
+    plt.plot([1,2,3,4,5,6,7,8,9,10], BERs)
+    plt.show()
+
+plot_ber_curve(bits)
+
+# P_noise = calc_noise_power(EbN0_dB, signal)
+# n = awgn(symbols_num, P_noise / 2, 0)
+# dirty_sig = signal + n
+
+# x_max = np.max(np.abs(np.real(dirty_sig)))
+# y_max = np.max(np.abs(np.imag(dirty_sig)))
+# plt.axis([-1.05*x_max, 1.05*x_max, -1.05*y_max, 1.05*y_max])
+# plt.scatter(np.real(dirty_sig), np.imag(dirty_sig))
 # plt.show()
+
+
+# def distance(p1, p2):
+#     return np.sqrt(
+#         (np.real(p1) - np.real(p2)) ** 2 + (np.imag(p1) - np.imag(p2)) ** 2
+#     )
 #
-# # хотим отфильтровать гармоники с частотой 2 * f_c
 #
-# h = np.genfromtxt('h_qam.csv', delimiter=',')
-# i = fft_filtering(r_i, h)
-# q = fft_filtering(r_q, h)
+# def guess(p):
+#     dists = list(map(lambda x: distance(x, p), constellation_points))
+#     m = min(dists)
+#     i = dists.index(m)
+#     return constellation_points[i]
+
+
+# demodulate = np.vectorize(guess)
+# demodulated_signal = demodulate(dirty_sig)
+
+
+# def symbol_error_rate(x, y):
+#     return np.count_nonzero(x-y) / len(x)
 #
-# plt.plot(i)
-# plt.plot(q, color='green')
-# plt.show()
+# print("SER =",symbol_error_rate(signal, demodulated_signal))
+#
+# def symbol_to_bits(s):
+#     i = constellation_points.index(s)
+#     return bits_constellation_points[i]
+#
+#
+# def symbols_to_bits(symbols):
+#     bits = np.zeros(len(symbols) * bits_per_symbol,int)
+#     j = 0
+#     for i in range(len(symbols)):
+#         s = symbols[i]
+#         v = bits_constellation_points[constellation_points.index(s)]
+#         b0 = v & 0b01
+#         b1 = (v & 0b10) >> 1
+#         bits[j] = b1
+#         j+=1
+#         bits[j] = b0
+#         j+=1
+#     return bits
+#
+#
+# received_bits = symbols_to_bits(demodulated_signal)
+#
+# def bit_error_rate(input_bits, output_bits):
+#     return np.count_nonzero(input_bits-output_bits) / len(input_bits)
+#
+# print("BER =", bit_error_rate(bits, received_bits))
