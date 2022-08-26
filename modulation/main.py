@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import scipy.spatial.distance as dst
 
 bits_num = 4_000_000
 bits_per_symbol = 4
-constellation_points = [1 + 1j, 1 + 3j, 1 - 1j, 1 - 3j, 3 + 1j, 3 + 3j, 3 - 1j, 3 - 3j, -1 + 1j, -1 + 3j, -1 - 1j,
-                        -1 - 3j, -3 + 1j, -3 + 3j, -3 - 1j, -3 - 3j]
+constellation_points = np.array([1 + 1j, 1 + 3j, 1 - 1j, 1 - 3j, 3 + 1j, 3 + 3j, 3 - 1j, 3 - 3j, -1 + 1j, -1 + 3j, -1 - 1j,
+                        -1 - 3j, -3 + 1j, -3 + 3j, -3 - 1j, -3 - 3j])
 symbols_num = bits_num // bits_per_symbol
 seed = 0
 
@@ -34,25 +35,6 @@ gray_mapping = {
     15: -3 - 3j
 }
 
-symbols_to_dec = {
-    1 + 1j : 0,
-    1 + 3j : 1,
-     1 - 1j : 2,
-     1 - 3j : 3,
-    3 + 1j : 4,
-    3 + 3j:5,
-    3 - 1j:6,
-    3 - 3j:7,
-    -1 + 1j:8,
-    -1 + 3j:9,
-     -1 - 1j:10,
-     -1 - 3j:11,
-     -3 + 1j:12,
-     -3 + 3j:13,
-     -3 - 1j:14,
-     -3 - 3j:15
-}
-
 
 def mod(bits):
     length = len(bits) // 4
@@ -69,8 +51,7 @@ def mod(bits):
     return output
 
 def power(sig):
-    abs = np.abs(sig)
-    return ((abs ** 2).sum()) / len(sig)
+    return (((np.abs(sig)) ** 2).sum()) / len(sig)
 
 
 def calc_noise_power(EbN0_dB, signal_power):
@@ -87,66 +68,15 @@ def awgn(symbols_num, var, seed):
            1j * np.random.normal(loc=0.0, scale=np.sqrt(var), size=symbols_num)
 
 
-def distance(p1, p2):
-    return np.abs(p1-p2)
+def ints_to_bits(values):
+    bits = np.unpackbits(values.astype(np.uint8))
 
+    # строка выше для каждого числа создаёт 8 бит, а нужны только 4. Поэтому первые четыре из каждых
+    # восьми необходимо удалить
+    mask = np.tile(np.r_[np.zeros(4, int), np.ones(4, int)], len(values))
+    target_bits = bits[np.nonzero(mask)]
 
-def guess(p):
-    points = []
-    offset = 0
-    if (np.real(p) >= 0):
-        if (np.imag(p) >= 0):
-            points = [constellation_points[0],constellation_points[1],
-                      constellation_points[4],constellation_points[5]]
-        else:
-            points = [constellation_points[2], constellation_points[3],
-                      constellation_points[6], constellation_points[7]]
-            offset = 2
-    elif np.imag(p) >= 0:
-        points = [constellation_points[8], constellation_points[9],
-                  constellation_points[12], constellation_points[13]]
-        offset = 8
-    else:
-        points = [constellation_points[10], constellation_points[11],
-                  constellation_points[14], constellation_points[15]]
-        offset = 10
-    dists = list(map(lambda x: distance(x, p), points))
-    m = min(dists)
-    bonus = 0
-    i = dists.index(m)
-    if i >= 2:
-        bonus = 2
-
-    return gray_mapping[offset + i + bonus]
-
-
-
-demodulate = np.vectorize(guess)
-
-
-def symbol_error_rate(x, y):
-    return np.count_nonzero(x - y) / len(x)
-
-
-def symbols_to_bits(symbols):
-    bits = np.zeros(len(symbols) * bits_per_symbol, int)
-    j = 0
-    for i in range(len(symbols)):
-        s = symbols[i]
-        v = symbols_to_dec[s]
-        b0 = v & 0b01
-        b1 = (v & 0b10) >> 1
-        b2 = (v & 0b100) >> 2
-        b3 = (v & 0b1000) >> 3
-        bits[j] = b3
-        j += 1
-        bits[j] = b2
-        j += 1
-        bits[j] = b1
-        j += 1
-        bits[j] = b0
-        j += 1
-    return bits
+    return target_bits
 
 
 def bit_error_rate(input_bits, output_bits):
@@ -154,21 +84,45 @@ def bit_error_rate(input_bits, output_bits):
 
 
 def plot_ber_curve(input_bits):
-    start_time = time.time()
+    total_time = time.time()
+    prepare_time = time.time()
     BERs = []
     input_signal = mod(input_bits)
     signal_power = power(input_signal)
+
+    print("--- prepare %s ---" % (time.time() - prepare_time))
+    print("++++++++++++++++")
     for EbN0_dB in range(0, 17):
+        iter_time = time.time()
+        n_time = time.time()
+
         P_noise = calc_noise_power(EbN0_dB, signal_power)
         n = awgn(symbols_num, P_noise / 2, 0)
+        n_time = time.time() - n_time
+
         dirty_sig = input_signal + n
 
-        demodulated_signal = demodulate(dirty_sig)
+        demod_time = time.time()
+        indices = np.abs(dirty_sig[:, None] - constellation_points[None, :]).argmin(axis=1)
+        demod_time = time.time() - demod_time
 
-        received_bits = symbols_to_bits(demodulated_signal)
+        bits_time = time.time()
+        received_bits = ints_to_bits(indices)
+        bits_time = time.time() - bits_time
+
+        ber_time = time.time()
         ber = bit_error_rate(input_bits, received_bits)
+        ber_time = time.time() - ber_time
         BERs.append(ber)
-        print("--- %s seconds ---" % (time.time() - start_time))
+        iter_time = time.time() - iter_time
+
+        print("--- iter %s ---" % (iter_time))
+        print("--- noise %s ---" % (n_time / iter_time))
+        print("--- demod %s ---" % (demod_time / iter_time))
+        print("--- bits %s ---" % (bits_time / iter_time))
+        print("--- ber %s ---" % (ber_time / iter_time))
+        print("------------")
+    print("--- total_time %s ---" % (time.time() - total_time))
     plt.yscale("log")
     plt.grid(visible='true')
     plt.xlabel("Eb/N0, dB")
