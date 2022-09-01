@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import scipy.spatial.distance as dst
+import scipy.sparse as sps
 
 bits_num = 4_000_000
 bits_per_symbol = 4
@@ -35,11 +35,58 @@ gray_mapping = {
     15: -3 - 3j
 }
 
+def bits_to_lil_matrix(bits):
+    length = len(bits) // 4
+    m = sps.lil_matrix((length, 16), dtype=bool)
+    j = 0
+    for i in range(length):
+        b0 = bits[4 * i + 3]
+        b1 = bits[4 * i + 2]
+        b2 = bits[4 * i + 1]
+        b3 = bits[4 * i]
+        v = (b3 << 3) + (b2 << 2) + (b1 << 1) + b0
+        m[j, v] = 1
+        j += 1
+    return m
+
+def modulate_using_matrix(bits):
+    lil = bits_to_lil_matrix(bits)
+    m = lil.tocoo()
+
+    c_vector = constellation_points[:, None]
+
+    t = time.time()
+    res = m.dot(c_vector)
+    print("vector product: %s sec", (time.time() - t))
+
+    return res
+
+def bits_to_nums(bits):
+    length = len(bits) // 4
+    output = np.empty(symbols_num, dtype=complex)
+    j = 0
+    for i in range(length):
+        b0 = bits[4 * i + 3]
+        b1 = bits[4 * i + 2]
+        b2 = bits[4 * i + 1]
+        b3 = bits[4 * i]
+        output[j] = (b3 << 3) + (b2 << 2) + (b1 << 1) + b0
+        j += 1
+    return output
 
 def mod(bits):
+    # t = time.time()
     length = len(bits) // 4
     j = 0
     output = np.empty(symbols_num, dtype=complex)
+
+    # print(bits)
+    # ls = [(0 if (i % 8 < 4) else bits[i - (4 * (i // 8 + 1))]) for i in range(0, 2 * len(bits))]
+    # print("%s" %(time.time() - t))
+    # a = np.array(ls)
+    # vals = np.packbits(a)
+    # return np.vectorize(gray_mapping.get)(vals)
+
     for i in range(length):
         b0 = bits[4 * i + 3]
         b1 = bits[4 * i + 2]
@@ -48,6 +95,7 @@ def mod(bits):
         key = (b3 << 3) + (b2 << 2) + (b1 << 1) + b0
         output[j] = gray_mapping[key]
         j += 1
+    # print("%s" % (time.time() - t))
     return output
 
 def power(sig):
@@ -64,8 +112,7 @@ def calc_noise_power(EbN0_dB, signal_power):
 
 def awgn(symbols_num, var, seed):
     np.random.seed(seed)
-    return np.random.normal(loc=0.0, scale=np.sqrt(var), size=symbols_num) + \
-           1j * np.random.normal(loc=0.0, scale=np.sqrt(var), size=symbols_num)
+    return np.sqrt(var)*np.random.randn(symbols_num) + 1j*np.sqrt(var)*np.random.randn(symbols_num)
 
 
 def ints_to_bits(values):
@@ -80,49 +127,34 @@ def ints_to_bits(values):
 
 
 def bit_error_rate(input_bits, output_bits):
-    return np.count_nonzero(input_bits - output_bits) / len(input_bits)
+    errs = np.count_nonzero(input_bits - output_bits)
+    print("bit errors: " + str(errs))
+    return errs / len(input_bits)
 
 
 def plot_ber_curve(input_bits):
-    total_time = time.time()
-    prepare_time = time.time()
+    t = time.time()
     BERs = []
-    input_signal = mod(input_bits)
+    # input_signal = mod(input_bits)
+    input_signal = (modulate_using_matrix(input_bits)).ravel()
+
     signal_power = power(input_signal)
+    print("mod_time: %s sec", (time.time() - t))
 
-    print("--- prepare %s ---" % (time.time() - prepare_time))
-    print("++++++++++++++++")
     for EbN0_dB in range(0, 17):
-        iter_time = time.time()
-        n_time = time.time()
-
+        t = time.time()
         P_noise = calc_noise_power(EbN0_dB, signal_power)
         n = awgn(symbols_num, P_noise / 2, 0)
-        n_time = time.time() - n_time
 
         dirty_sig = input_signal + n
 
-        demod_time = time.time()
         indices = np.abs(dirty_sig[:, None] - constellation_points[None, :]).argmin(axis=1)
-        demod_time = time.time() - demod_time
 
-        bits_time = time.time()
         received_bits = ints_to_bits(indices)
-        bits_time = time.time() - bits_time
 
-        ber_time = time.time()
         ber = bit_error_rate(input_bits, received_bits)
-        ber_time = time.time() - ber_time
         BERs.append(ber)
-        iter_time = time.time() - iter_time
-
-        print("--- iter %s ---" % (iter_time))
-        print("--- noise %s ---" % (n_time / iter_time))
-        print("--- demod %s ---" % (demod_time / iter_time))
-        print("--- bits %s ---" % (bits_time / iter_time))
-        print("--- ber %s ---" % (ber_time / iter_time))
-        print("------------")
-    print("--- total_time %s ---" % (time.time() - total_time))
+        print("iter_time: %s sec", (time.time() - t))
     plt.yscale("log")
     plt.grid(visible='true')
     plt.xlabel("Eb/N0, dB")
@@ -134,4 +166,16 @@ def plot_ber_curve(input_bits):
 
 bits = gen_bits(0, bits_num)
 plot_ber_curve(bits)
+
+# test = np.random.randint(0, 16, 1_000_000)
+#
+# for j in range(0, 5):
+#     t = time.time()
+#     b = np.vectorize(gray_mapping.get)(test)
+#     print("mod: %s sec", (time.time() - t))
+
+
+
+
+
 
