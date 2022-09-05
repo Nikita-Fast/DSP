@@ -32,7 +32,7 @@ def calc_ber_curve(input_bits, order):
 
     qam_modulator = modulation.QAMModulator(order=order)
     awgn_channel = channel.AWGNChannel()
-    qam_demodulator = demodulation.QAMDemodulator(order=order, constellation_points=qam_modulator.qam_symbols())
+    qam_demodulator = demodulation.QAMDemodulator(order=order, constellation_points=qam_modulator.create_qam_symbols())
 
     # qam_modulator.plot_constellation_points()
 
@@ -58,12 +58,13 @@ def calc_ber(order, Eb_N0_dB):
     bit_errors = 0
     qam_modulator = modulation.QAMModulator(order=order)
     awgn_channel = channel.AWGNChannel()
-    qam_demodulator = demodulation.QAMDemodulator(order=order, constellation_points=qam_modulator.qam_symbols())
+    qam_demodulator = demodulation.QAMDemodulator(order=order, constellation_points=qam_modulator.create_qam_symbols())
 
     bit_pack_size = 100_000
     bits_processed = 0
     k = 0
-    while (bit_errors < 1000 and bits_processed < 1_000_000_000):
+    approx_volume = 1_000_000_000
+    while (bit_errors < 1000 and bits_processed < 1_000_000_000 and bits_processed < approx_volume):
         np.random.seed(k)
         k += 1
         bits = np.random.randint(low=0, high=2, size=bit_pack_size)
@@ -74,9 +75,24 @@ def calc_ber(order, Eb_N0_dB):
 
         bits_processed += bit_pack_size
         bit_errors += count_bit_errors(bits, demod_bits)
-        # print(bit_errors, bits_processed)
+        if bits_processed % 2_500_000 == 0:
+            approx_ber = bit_errors / bits_processed
+            print("approx_ber:", approx_ber)
+
+            if approx_ber > 0:
+                s = np.format_float_scientific(approx_ber)
+                a, b, c = s.partition("e-")
+                # print(s.partition("e-"))
+                # print(a, 10 ** int(c))
+                # print(100 / float(a), 10 ** int(c))
+                approx_volume = (100 / float(a)) * (10 ** int(c))
+                print("approx_vol:", approx_volume)
+        if bits_processed % 25_000_000 == 0:
+            print("bits processed:", (bits_processed))
+
     ber = bit_errors / bits_processed
     print("Eb_N0_dB="+str(Eb_N0_dB), "ber="+str(ber), "k="+str(k), "bits_processed="+str(bits_processed))
+    print("------------------------------------")
     return ber
 
 
@@ -108,7 +124,8 @@ def plot_ber_curve(orders):
     plt.show()
 
 
-bers = calc_ber_curve_balanced_work(4)
+bers = calc_ber_curve_balanced_work(order=4)
+
 plt.yscale("log")
 plt.grid(visible='true')
 plt.xlabel("Eb/N0, dB")
@@ -116,3 +133,5 @@ plt.ylabel("BER")
 plt.plot(bers, '--o', label="balanced_work")
 
 plot_ber_curve([4])
+
+

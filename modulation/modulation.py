@@ -26,8 +26,10 @@ class QAMModulator:
 
         self.modulation_order = order
         self.bits_per_symbol = int(bits_per_symbol)
+        self.qam_symbols = self.create_qam_symbols()
 
-    def __square_qam_symbols(self, order):
+
+    def __create_square_qam_symbols(self, order):
         """ Создаёт точки сигнального созвездия для квадратной M-QAM, где M это 4, 16, 64, ... ."""
         m = [i for i in range(order)]
 
@@ -37,11 +39,11 @@ class QAMModulator:
         s = list((a + 1j * b))
         return s
 
-    def __cross_qam_symbols(self):
+    def __create_cross_qam_symbols(self):
         """ Создаёт точки сигнального созвездия для крестовой M-QAM, где M это 32, 128, 512, ... ."""
         if (self.modulation_order == 2 or self.modulation_order == 8):
             raise ValueError(str(self.modulation_order) + "-QAM is not implemented yet")
-        m = self.__square_qam_symbols(self.modulation_order // 2)
+        m = self.__create_square_qam_symbols(self.modulation_order // 2)
         l_row = int(np.sqrt(self.modulation_order // 2))
         n_row = int((self.modulation_order // 2) / (4 * l_row))
 
@@ -77,7 +79,7 @@ class QAMModulator:
         other = list(other_points)
         return m + other
 
-    def qam_symbols(self):
+    def create_qam_symbols(self):
         """ Создаёт точки сигнального созвездия для КАМ модуляции."""
         if np.log2(self.modulation_order) % 2 == 0:
             m = [i for i in range(self.modulation_order)]
@@ -89,7 +91,7 @@ class QAMModulator:
 
             return s
         else:
-            return self.__cross_qam_symbols()
+            return self.__create_cross_qam_symbols()
 
     def __bits_to_coo_matrix(self, bits):
         """ По массиву бит строим матрицу, где строка соответствет символу, а единичка в столбце -
@@ -115,7 +117,7 @@ class QAMModulator:
 
         m = self.__bits_to_coo_matrix(bits)
 
-        c_vector = np.array(self.qam_symbols())[:, None]
+        c_vector = np.array(self.qam_symbols)[:, None]
 
         t = time.time()
         modulated = m.dot(c_vector)
@@ -126,7 +128,7 @@ class QAMModulator:
 
     def plot_constellation_points(self):
         """ Рисуем сигнальное созвездие."""
-        points = self.qam_symbols()
+        points = self.qam_symbols
         plt.scatter(np.real(points), np.imag(points))
         plt.show()
 
@@ -135,7 +137,7 @@ class QAMModulator:
         i, j = 0, 0
         l = len(bits)
         out = np.empty(l // self.bits_per_symbol, dtype=complex)
-        qam_symbol_dict = {k: v for k,v in zip(range(self.modulation_order), self.qam_symbols())}
+        qam_symbol_dict = {k: v for k, v in zip(range(self.modulation_order), self.qam_symbols)}
         while i < l:
             bs = bits[i:i + self.bits_per_symbol]
             out[j] = qam_symbol_dict[bit_list_to_int(bs)]
