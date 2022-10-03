@@ -46,6 +46,13 @@ class QAMModulator:
         self.bits_per_symbol = int(bits_per_symbol)
         self.qam_symbols = self.create_qam_symbols()
 
+    def sort_constellation_points(self):
+        return sorted(self.qam_symbols, key=lambda x: (-x.imag, x.real))
+
+    # def __init__(self, bits_per_symbol: int, bit_mapping):
+    #     self.bits_per_symbol = bits_per_symbol
+    #     self.qam_symbols = self.create_qam_symbols()
+
     def __create_square_qam_symbols(self, order):
         """ Создаёт точки сигнального созвездия для квадратной M-QAM, где M это 4, 16, 64, ... ."""
         m = [i for i in range(order)]
