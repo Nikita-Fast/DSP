@@ -16,6 +16,24 @@ def bit_list_to_int(ls):
     return acc
 
 
+def shifting(bit_list):
+    out = 0
+    for bit in bit_list:
+        out = (out << 1) | bit
+    return out
+
+
+def bits_to_ints(bits, bits_per_int):
+    i = 0
+    symbols = np.empty(len(bits) // bits_per_int, dtype=int)
+    k = 0
+    while i < len(bits):
+        symbols[k] = shifting(bits[i:i + bits_per_int])
+        i += bits_per_int
+        k += 1
+    return symbols
+
+
 class QAMModulator:
     """Класс описывающий КАМ модулятор"""
 
@@ -27,7 +45,6 @@ class QAMModulator:
         self.modulation_order = order
         self.bits_per_symbol = int(bits_per_symbol)
         self.qam_symbols = self.create_qam_symbols()
-
 
     def __create_square_qam_symbols(self, order):
         """ Создаёт точки сигнального созвездия для квадратной M-QAM, где M это 4, 16, 64, ... ."""
@@ -89,42 +106,9 @@ class QAMModulator:
             a = 2 * np.floor(np.array(m) / c) - c + 1
             s = list((a + 1j * b))
 
-            return s
+            return np.array(s)
         else:
-            return self.__create_cross_qam_symbols()
-
-    def __bits_to_coo_matrix(self, bits):
-        """ По массиву бит строим матрицу, где строка соответствет символу, а единичка в столбце -
-        значению символа в десятичной системе счисления. Поскольку в строке все элементы кроме одного нулевые,
-        используем разряженную матрицу в COO представлении."""
-
-        length = len(bits) // self.bits_per_symbol
-        m = sps.lil_matrix((length, self.modulation_order), dtype=bool)
-        j = 0
-        for i in range(length):
-            ls = bits[self.bits_per_symbol * i: self.bits_per_symbol * (i + 1)]
-            v = bit_list_to_int(ls)
-
-            m[j, v] = 1
-            j += 1
-        return m.tocoo()
-
-    def __modulate_using_matrix(self, bits):
-        """ Преобразуем биты в символы и создаём матрицу где строка соответствует символу, а единичка в столбце -
-        значению символа в десятичной системе счисления. Умножаем матрицу на столбец из комплексных чисел являющихся
-        точками сигнального созвездия и получаем столбец промодулированных символов.
-        Преобразуем полученный столбец в строку"""
-
-        m = self.__bits_to_coo_matrix(bits)
-
-        c_vector = np.array(self.qam_symbols)[:, None]
-
-        t = time.time()
-        modulated = m.dot(c_vector)
-        res = modulated.ravel()
-        print("vector product: %s sec", (time.time() - t))
-
-        return res
+            return np.array(self.__create_cross_qam_symbols())
 
     def plot_constellation_points(self):
         """ Рисуем сигнальное созвездие."""
@@ -132,23 +116,10 @@ class QAMModulator:
         plt.scatter(np.real(points), np.imag(points))
         plt.show()
 
-    def __modulate_naive(self, bits):
-        """Преобразуем биты в КАМ символы с помощью словаря."""
-        i, j = 0, 0
-        l = len(bits)
-        out = np.empty(l // self.bits_per_symbol, dtype=complex)
-        qam_symbol_dict = {k: v for k, v in zip(range(self.modulation_order), self.qam_symbols)}
-        while i < l:
-            bs = bits[i:i + self.bits_per_symbol]
-            out[j] = qam_symbol_dict[bit_list_to_int(bs)]
-            j += 1
-            i += self.bits_per_symbol
-        return out
-
     def modulate(self, bits):
         """ Преобразуем биты в КАМ символы"""
         if len(bits) % self.bits_per_symbol != 0:
             raise ValueError("Number of bits must be multiple of self.bits_per_symbol")
 
-        # return self.__modulate_using_matrix(bits)
-        return self.__modulate_naive(bits)
+        ints = bits_to_ints(bits, self.bits_per_symbol)
+        return self.qam_symbols[ints]
