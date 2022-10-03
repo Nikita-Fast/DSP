@@ -1,7 +1,7 @@
 import time
 
 import numpy as np
-import scipy.sparse as sps
+from typing import Optional
 from matplotlib import pyplot as plt
 
 
@@ -34,27 +34,33 @@ def bits_to_ints(bits, bits_per_int):
     return symbols
 
 
+def sort_constellation_points(complex_numbers):
+    return sorted(complex_numbers, key=lambda x: (-x.imag, x.real))
+
+
 class QAMModulator:
     """Класс описывающий КАМ модулятор"""
 
-    def __init__(self, order):
-        bits_per_symbol = np.log2(order)
-        if bits_per_symbol != round(bits_per_symbol):
-            raise ValueError("order must be 2 ** k, k = 2,4,6,...")
-
-        self.modulation_order = order
+    def __init__(self, bits_per_symbol: int, bit_mapping: Optional):
         self.bits_per_symbol = int(bits_per_symbol)
-        self.qam_symbols = self.create_qam_symbols()
 
-    def sort_constellation_points(self):
-        return sorted(self.qam_symbols, key=lambda x: (-x.imag, x.real))
+        if bit_mapping is None:
+            self.qam_symbols = sort_constellation_points(self.create_qam_symbols())
+        else:
+            if len(bit_mapping) != 2 ** bits_per_symbol:
+                raise ValueError("bit_mapping is not correct")
 
-    # def __init__(self, bits_per_symbol: int, bit_mapping):
-    #     self.bits_per_symbol = bits_per_symbol
-    #     self.qam_symbols = self.create_qam_symbols()
+            qam_symbols = np.empty(len(bit_mapping), dtype=complex)
+            default_order = sort_constellation_points(self.create_qam_symbols())
+            k = 0
+            for v in bit_mapping:
+                qam_symbols[v] = default_order[k]
+                k += 1
+            self.qam_symbols = qam_symbols
 
-    def __create_square_qam_symbols(self, order):
+    def __create_square_qam_symbols(self, bits_per_symbol):
         """ Создаёт точки сигнального созвездия для квадратной M-QAM, где M это 4, 16, 64, ... ."""
+        order = 2 ** bits_per_symbol
         m = [i for i in range(order)]
 
         c = np.sqrt(order)
@@ -63,13 +69,15 @@ class QAMModulator:
         s = list((a + 1j * b))
         return s
 
-    def __create_cross_qam_symbols(self):
+    def create_cross_qam_symbols(self):
         """ Создаёт точки сигнального созвездия для крестовой M-QAM, где M это 32, 128, 512, ... ."""
-        if (self.modulation_order == 2 or self.modulation_order == 8):
-            raise ValueError(str(self.modulation_order) + "-QAM is not implemented yet")
-        m = self.__create_square_qam_symbols(self.modulation_order // 2)
-        l_row = int(np.sqrt(self.modulation_order // 2))
-        n_row = int((self.modulation_order // 2) / (4 * l_row))
+        order = 2 ** self.bits_per_symbol
+        if order == 2 or order == 8:
+            raise ValueError(str(order) + "-QAM is not implemented yet")
+
+        m = self.__create_square_qam_symbols(self.bits_per_symbol - 1)
+        l_row = int(np.sqrt(order // 2))
+        n_row = int((order // 2) / (4 * l_row))
 
         other_points = np.empty(0, dtype=complex)
         # create left columns
@@ -105,17 +113,18 @@ class QAMModulator:
 
     def create_qam_symbols(self):
         """ Создаёт точки сигнального созвездия для КАМ модуляции."""
-        if np.log2(self.modulation_order) % 2 == 0:
-            m = [i for i in range(self.modulation_order)]
+        order = 2 ** self.bits_per_symbol
+        if np.log2(order) % 2 == 0:
+            m = [i for i in range(order)]
 
-            c = np.sqrt(self.modulation_order)
+            c = np.sqrt(order)
             b = -2 * (np.array(m) % c) + c - 1
             a = 2 * np.floor(np.array(m) / c) - c + 1
             s = list((a + 1j * b))
 
             return np.array(s)
         else:
-            return np.array(self.__create_cross_qam_symbols())
+            return np.array(self.create_cross_qam_symbols())
 
     def plot_constellation_points(self):
         """ Рисуем сигнальное созвездие."""
