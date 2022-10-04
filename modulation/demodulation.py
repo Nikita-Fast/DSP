@@ -1,16 +1,19 @@
 import numpy as np
 
+import modulation
+
+
 class QAMDemodulator:
     """Класс описывающий КАМ демодулятор"""
 
-    def __init__(self, order, constellation_points):
-        bits_per_symbol = np.log2(order)
-        if bits_per_symbol != round(bits_per_symbol):
-            raise ValueError("order must be 2 ** k, k > 0 and k != 1, 3")
-
-        self.modulation_order = order
-        self.bits_per_symbol = int(bits_per_symbol)
+    def __init__(self, bits_per_symbol: int, constellation_points):
+        self.bits_per_symbol = bits_per_symbol
         self.constellation_points = constellation_points
+
+    @classmethod
+    def from_qam_modulator(cls, qam_modulator: modulation.QAMModulator):
+        return cls(bits_per_symbol=qam_modulator.bits_per_symbol,
+                   constellation_points=qam_modulator.qam_symbols)
 
     def __ints_to_bits(self, ints):
         """Конвертирует массив int-ов в их битовое представление, за количество битов, выделяемых
@@ -39,7 +42,7 @@ class QAMDemodulator:
         idxs = [0]
         acc = 0
 
-        magic_const = 51_200_000 // int(self.modulation_order)
+        magic_const = 51_200_000 // int(2 ** self.bits_per_symbol)
         while acc < l:
             acc = min(acc + magic_const, l)
             idxs.append(acc)
