@@ -2,9 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-import channel
-import modulation
-import demodulation
+from channel import AWGNChannel
+from qam_demodulation import QAMDemodulator
+from qam_modulation import QAMModulator
+import default_qam_constellations
 
 symbols_num = 1_000_000
 
@@ -26,21 +27,19 @@ def bit_error_rate(input_bits, output_bits):
     return res
 
 
-def calc_ber_curve(input_bits, order):
+def calc_ber_curve(input_bits, bits_per_symbol):
     t = time.time()
     BER_points = []
 
-    qam_modulator = modulation.QAMModulator(order=order)
-    awgn_channel = channel.AWGNChannel()
-    qam_demodulator = demodulation.QAMDemodulator(order=order, constellation_points=qam_modulator.create_qam_symbols())
-
-    # qam_modulator.plot_constellation_points()
+    qam_modulator = QAMModulator(bits_per_symbol, bit_mapping=None)
+    awgn_channel = AWGNChannel()
+    qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
 
     mod_signal = qam_modulator.modulate(input_bits)
 
     print("mod_time: %s sec", (time.time() - t))
 
-    max_Eb_N0_dB = 14
+    max_Eb_N0_dB = 20
     for Eb_N0_dB in range(0, max_Eb_N0_dB):
         t = time.time()
 
@@ -54,13 +53,14 @@ def calc_ber_curve(input_bits, order):
     return BER_points
 
 
-def calc_ber(order, Eb_N0_dB):
+def calc_ber(bits_per_symbol, Eb_N0_dB):
     bit_errors = 0
-    qam_modulator = modulation.QAMModulator(order=order)
-    awgn_channel = channel.AWGNChannel()
-    qam_demodulator = demodulation.QAMDemodulator(order=order, constellation_points=qam_modulator.create_qam_symbols())
 
-    bit_pack_size = 100_000
+    qam_modulator = QAMModulator(bits_per_symbol, bit_mapping=None)
+    awgn_channel = AWGNChannel()
+    qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
+
+    bit_pack_size = 300_000
     bits_processed = 0
     k = 0
     approx_volume = 1_000_000_000
@@ -91,17 +91,17 @@ def calc_ber(order, Eb_N0_dB):
             print("bits processed:", (bits_processed))
 
     ber = bit_errors / bits_processed
-    print("Eb_N0_dB="+str(Eb_N0_dB), "ber="+str(ber), "k="+str(k), "bits_processed="+str(bits_processed))
+    print("Eb_N0_dB=" + str(Eb_N0_dB), "ber=" + str(ber), "k=" + str(k), "bits_processed=" + str(bits_processed))
     print("------------------------------------")
     return ber
 
 
-def calc_ber_curve_balanced_work(order):
+def calc_ber_curve_balanced_work(bits_per_symbol):
     bers = []
-    border = 1e-7
+    border = 2e-5
     Eb_N0_db = 0
     while 1:
-        ber = calc_ber(order, Eb_N0_db)
+        ber = calc_ber(bits_per_symbol, Eb_N0_db)
         bers.append(ber)
         Eb_N0_db += 1
 
@@ -109,29 +109,74 @@ def calc_ber_curve_balanced_work(order):
             break
     return bers
 
-def plot_ber_curve(orders):
+
+def plot_ber_curve(bits_per_symbol_list):
     results = []
-    for order in orders:
-        bits = gen_bits(1, int(symbols_num * np.log2(order)))
-        results.append((order, calc_ber_curve(bits, order)))
+    for bits_per_symbol in bits_per_symbol_list:
+        bits = gen_bits(1, int(symbols_num * bits_per_symbol))
+        results.append((bits_per_symbol, calc_ber_curve(bits, bits_per_symbol)))
     plt.yscale("log")
     plt.grid(visible='true')
     plt.xlabel("Eb/N0, dB")
     plt.ylabel("BER")
-    for (order, BER_points) in results:
-        plt.plot(BER_points, '--o', label=str(order) + '-QAM')
+    for (bits_per_symbol, BER_points) in results:
+        plt.plot(BER_points, '--o', label=str(2 ** bits_per_symbol) + '-QAM')
         plt.legend()
     plt.show()
 
 
-bers = calc_ber_curve_balanced_work(order=4)
+# bers = calc_ber_curve_balanced_work(bits_per_symbol=1)
+#
+# plt.yscale("log")
+# plt.grid(visible='true')
+# plt.xlabel("Eb/N0, dB")
+# plt.ylabel("BER")
+# plt.plot(bers, '--o', label="balanced_work")
 
-plt.yscale("log")
-plt.grid(visible='true')
-plt.xlabel("Eb/N0, dB")
-plt.ylabel("BER")
-plt.plot(bers, '--o', label="balanced_work")
+# plot_ber_curve([1])
 
-plot_ber_curve([4])
+def calc_ber_curve_for_different_bit_mappings(bits_per_symbol, bit_mappings, mapping_names):
+    BER_curves = []
+    for bit_mapping in bit_mappings:
+        qam_modulator = QAMModulator(bits_per_symbol, bit_mapping)
+        awgn_channel = AWGNChannel()
+        qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
+
+        bits = gen_bits(1, int(symbols_num * bits_per_symbol))
+        mod_signal = qam_modulator.modulate(bits)
+
+        max_Eb_N0_dB = 20
+        BER_points = []
+        for Eb_N0_dB in range(0, max_Eb_N0_dB):
+            dirty_sig = awgn_channel.add_noise(mod_signal, Eb_N0_dB, qam_modulator.bits_per_symbol)
+            demod_bits = qam_demodulator.demodulate(dirty_sig)
+
+            ber = bit_error_rate(bits, demod_bits)
+            BER_points.append(ber)
+        BER_curves.append(list.copy(BER_points))
+        BER_points.clear()
 
 
+    plt.yscale("log")
+    plt.grid(visible='true')
+    plt.xlabel("Eb/N0, dB")
+    plt.ylabel("BER")
+    i = 0
+    for i in range(len(bit_mappings)):
+        plt.plot(BER_curves[i], '--o', label=mapping_names[i])
+        i += 1
+        plt.legend()
+    plt.show()
+
+
+calc_ber_curve_for_different_bit_mappings(4, [
+    None,
+    [13, 9, 1, 5,
+     12, 8, 0, 4,
+     14, 10, 2, 6,
+     15, 11, 3, 7],
+    [5, 11, 7, 3,
+     1, 0, 9, 4,
+     2, 6, 15, 8,
+     14, 12, 10, 13]
+], ["default", "gray", "random"])
