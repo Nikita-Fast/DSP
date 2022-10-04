@@ -1,19 +1,8 @@
-import time
-
 import numpy as np
 from typing import Optional
 from matplotlib import pyplot as plt
 
-
-def bit_list_to_int(ls):
-    """ Конвертирует битовую запись числа в его представление в десятичной системе счисления.
-    Старшие биты находятся в начале списка."""
-    l = len(ls)
-    acc = 0
-    for i in range(l):
-        shift = l - 1 - i
-        acc += ls[i] << shift
-    return acc
+import default_qam_constellations
 
 
 def shifting(bit_list):
@@ -42,23 +31,23 @@ class QAMModulator:
     """Класс описывающий КАМ модулятор"""
 
     def __init__(self, bits_per_symbol: int, bit_mapping: Optional):
-        self.bits_per_symbol = int(bits_per_symbol)
+        self.bits_per_symbol = bits_per_symbol
 
         if bit_mapping is None:
-            self.qam_symbols = sort_constellation_points(self.create_qam_symbols())
+            self.qam_symbols = default_qam_constellations.get_qam_symbols_with_default_order[bits_per_symbol]
         else:
             if len(bit_mapping) != 2 ** bits_per_symbol:
                 raise ValueError("bit_mapping is not correct")
 
             qam_symbols = np.empty(len(bit_mapping), dtype=complex)
-            default_order = sort_constellation_points(self.create_qam_symbols())
+            default_order = default_qam_constellations.get_qam_symbols_with_default_order[bits_per_symbol]
             k = 0
             for v in bit_mapping:
                 qam_symbols[v] = default_order[k]
                 k += 1
             self.qam_symbols = qam_symbols
 
-    def __create_square_qam_symbols(self, bits_per_symbol):
+    def create_square_qam_symbols(self, bits_per_symbol):
         """ Создаёт точки сигнального созвездия для квадратной M-QAM, где M это 4, 16, 64, ... ."""
         order = 2 ** bits_per_symbol
         m = [i for i in range(order)]
@@ -75,7 +64,7 @@ class QAMModulator:
         if order == 2 or order == 8:
             raise ValueError(str(order) + "-QAM is not implemented yet")
 
-        m = self.__create_square_qam_symbols(self.bits_per_symbol - 1)
+        m = self.create_square_qam_symbols(self.bits_per_symbol - 1)
         l_row = int(np.sqrt(order // 2))
         n_row = int((order // 2) / (4 * l_row))
 
