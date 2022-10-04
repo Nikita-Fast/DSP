@@ -1,6 +1,6 @@
 import numpy as np
 
-import modulation
+import qam_modulation
 
 
 class QAMDemodulator:
