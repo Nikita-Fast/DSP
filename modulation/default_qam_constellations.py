@@ -1,5 +1,8 @@
+import numpy as np
 
+qam_2_symbols = [(-1 + 0j), (1 + 0j)]
 qam_4_symbols = [(-1 + 1j), (1 + 1j), (-1 - 1j), (1 - 1j)]
+qam_8_symbols = [(-3 + 1j), (-1 + 1j), (1 + 1j), (3 + 1j), (-3 - 1j), (-1 - 1j), (1 - 1j), (3 - 1j)]
 qam_16_symbols = [(-3 + 3j), (-1 + 3j), (1 + 3j), (3 + 3j), (-3 + 1j), (-1 + 1j), (1 + 1j), (3 + 1j), (-3 - 1j),
                   (-1 - 1j), (1 - 1j), (3 - 1j), (-3 - 3j), (-1 - 3j), (1 - 3j), (3 - 3j)]
 qam_32_symbols = [(-3 + 5j), (-1 + 5j), (1 + 5j), (3 + 5j), (-5 + 3j), (-3 + 3j), (-1 + 3j), (1 + 3j), (3 + 3j),
@@ -1067,14 +1070,16 @@ qam_4096_symbols = [(-63 + 63j), (-61 + 63j), (-59 + 63j), (-57 + 63j), (-55 + 6
                     (51 - 63j), (53 - 63j), (55 - 63j), (57 - 63j), (59 - 63j), (61 - 63j), (63 - 63j)]
 
 get_qam_symbols_with_default_order = {
-    2: qam_4_symbols,
-    4: qam_16_symbols,
-    5: qam_32_symbols,
-    6: qam_64_symbols,
-    7: qam_128_symbols,
-    8: qam_256_symbols,
-    9: qam_512_symbols,
-    10: qam_1024_symbols,
-    11: qam_2048_symbols,
-    12: qam_4096_symbols
+    1: np.array(qam_2_symbols),
+    2: np.array(qam_4_symbols),
+    3: np.array(qam_8_symbols),
+    4: np.array(qam_16_symbols),
+    5: np.array(qam_32_symbols),
+    6: np.array(qam_64_symbols),
+    7: np.array(qam_128_symbols),
+    8: np.array(qam_256_symbols),
+    9: np.array(qam_512_symbols),
+    10: np.array(qam_1024_symbols),
+    11: np.array(qam_2048_symbols),
+    12: np.array(qam_4096_symbols)
 }
