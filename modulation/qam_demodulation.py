@@ -11,7 +11,7 @@ class QAMDemodulator:
         self.constellation_points = constellation_points
 
     @classmethod
-    def from_qam_modulator(cls, qam_modulator: modulation.QAMModulator):
+    def from_qam_modulator(cls, qam_modulator: qam_modulation.QAMModulator):
         return cls(bits_per_symbol=qam_modulator.bits_per_symbol,
                    constellation_points=qam_modulator.qam_symbols)
 
