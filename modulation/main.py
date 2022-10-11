@@ -2,17 +2,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-from numpy import sign
-
+import qam_modulation
 from channel import AWGNChannel
 from qam_demodulation import QAMDemodulator
 from qam_modulation import QAMModulator
 import default_qam_constellations
-import scipy.special as special
-import sk_dsp_comm.digitalcom as dc
-import sk_dsp_comm.fec_conv as fec
+import commpy.channelcoding.convcode as cc
 
-symbols_num = 1_000_000
+symbols_num = 100_000
 
 
 def gen_bits(seed, bits_num):
@@ -26,9 +23,9 @@ def count_bit_errors(input_bits, output_bits):
 
 def bit_error_rate(input_bits, output_bits):
     errs = count_bit_errors(input_bits, output_bits)
-    print("bit errors: " + str(errs))
+    # print("bit errors: " + str(errs))
     res = errs / len(input_bits)
-    print("ber: " + str(res))
+    # print("ber: " + str(res))
     return res
 
 
@@ -161,7 +158,6 @@ def calc_ber_curve_for_different_bit_mappings(bits_per_symbol, bit_mappings, map
         BER_curves.append(list.copy(BER_points))
         BER_points.clear()
 
-
     plt.yscale("log")
     plt.grid(visible='true')
     plt.xlabel("Eb/N0, dB")
@@ -186,52 +182,109 @@ def calc_ber_curve_for_different_bit_mappings(bits_per_symbol, bit_mappings, map
 #      14, 12, 10, 13]
 # ], ["default", "gray", "random"])
 
-qam_modulator = QAMModulator(4, bit_mapping=None)
-awgn_channel = AWGNChannel()
-qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
-
-import commpy.channelcoding.convcode as cc
-
 def BER_calc(a, b):
-    num_ber = np.sum(np.abs(a - b))
+    bit_errors = np.sum(np.abs(a - b))
     ber = np.mean(np.abs(a - b))
-    return int(num_ber), ber
+    return int(bit_errors), ber
 
-message_bits = np.random.randint(0, 2, size=40_000)
 
-# constraint length
-K = 3
+def convenc_ber(K: int, g_matrix, qam_modulator: qam_modulation.QAMModulator, max_ebn0):
+    in_bits = gen_bits(1, int(symbols_num * qam_modulator.bits_per_symbol))
+    awgn_channel = AWGNChannel()
+    qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
 
-# Trellis structure
-trellis = cc.Trellis(np.array([K-1]), np.array([[5, 7]]))
+    trellis = cc.Trellis(np.array([K - 1]), g_matrix)
+    tb_depth = 5 * (K - 1)
 
-constraint = int(np.log2(trellis.number_states)) + 1
+    ber_curves = []
+    ber_curves_descs = []
+    ber_points = []
 
-# code has rate 1/2 so approximate traceback depth is
-tb_depth = 5 * (K - 1)
+    for use_conv_coding in {False, True}:
+        t = time.time()
+        for ebn0 in range(max_ebn0 + 1):
+            bits = in_bits
 
-coded_bits = cc.conv_encode(message_bits, trellis) # encoding
+            if use_conv_coding:
+                bits = cc.conv_encode(in_bits, trellis)
 
-print(len(coded_bits))
-modulated = qam_modulator.modulate(coded_bits)
+            modulated = qam_modulator.modulate(bits)
+            noised = awgn_channel.add_noise(modulated, ebn0, qam_modulator.bits_per_symbol)
+            demodulated = qam_demodulator.demodulate(noised)
+            out_bits = demodulated
 
-EbNo = 0
+            if use_conv_coding:
+                out_bits = cc.viterbi_decode(demodulated, trellis, tb_depth, decoding_type='hard')
 
-noisy = awgn_channel.add_noise(modulated, EbNo, qam_modulator.bits_per_symbol)
+            _, ber = BER_calc(in_bits, out_bits[:len(in_bits)])
+            ber_points.append(ber)
+            print("convenc =", use_conv_coding, ebn0, "- done")
 
-demodulated_hard = qam_demodulator.demodulate(noisy)
+        ber_curves.append(ber_points.copy())
+        ber_points.clear()
 
-decoded_hard = cc.viterbi_decode(demodulated_hard, trellis, tb_depth, decoding_type='hard') # decoding (hard decision)
-print(len(decoded_hard))
+        desc = ("conv_enc" if use_conv_coding else "no_enc") + " QAM-" + str(2 ** qam_modulator.bits_per_symbol)
+        ber_curves_descs.append(desc)
+        print(desc + "elapsed_time:", (time.time() - t))
 
-NumErr, BER_hard = BER_calc(message_bits, decoded_hard[:message_bits.size]) # bit-error ratio (hard decision)
+    return ber_curves, ber_curves_descs
 
-print(np.array_equal(message_bits, decoded_hard[:message_bits.size]))
-print("conv coding", NumErr, BER_hard)
 
-modulated_no_coding = qam_modulator.modulate(message_bits)
-noisy = awgn_channel.add_noise(modulated_no_coding, EbNo, qam_modulator.bits_per_symbol)
-demodulated_no_coding = qam_demodulator.demodulate(noisy)
+def plot_ber_curves(ber_curves, ber_curves_descs):
+    plt.yscale("log")
+    plt.grid(visible='true')
+    plt.xlabel("Eb/N0, dB")
+    plt.ylabel("BER")
 
-NumErr, BER_hard = BER_calc(message_bits, demodulated_no_coding)
-print("no coding", NumErr, BER_hard)
+    for ber_curve, desc in zip(ber_curves, ber_curves_descs):
+        plt.plot(ber_curve, '--o', label=desc)
+        plt.legend()
+    plt.show()
+
+
+qam_modulator = QAMModulator(4, bit_mapping=None)
+ber_curves, ber_curves_descs = convenc_ber(K=3, g_matrix=np.array([[5, 7]]), qam_modulator=qam_modulator, max_ebn0=15)
+plot_ber_curves(ber_curves, ber_curves_descs)
+
+# qam_modulator = QAMModulator(4, bit_mapping=None)
+# awgn_channel = AWGNChannel()
+# qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
+#
+# message_bits = np.random.randint(0, 2, size=40_000)
+#
+# # constraint length
+# K = 3
+#
+# # Trellis structure
+# trellis = cc.Trellis(np.array([K-1]), np.array([[5, 7]]))
+#
+# constraint = int(np.log2(trellis.number_states)) + 1
+#
+# # code has rate 1/2 so approximate traceback depth is
+# tb_depth = 5 * (K - 1)
+#
+# coded_bits = cc.conv_encode(message_bits, trellis) # encoding
+#
+# print(len(coded_bits))
+# modulated = qam_modulator.modulate(coded_bits)
+#
+# EbNo = 0
+#
+# noisy = awgn_channel.add_noise(modulated, EbNo, qam_modulator.bits_per_symbol)
+#
+# demodulated_hard = qam_demodulator.demodulate(noisy)
+#
+# decoded_hard = cc.viterbi_decode(demodulated_hard, trellis, tb_depth, decoding_type='hard') # decoding (hard decision)
+# print(len(decoded_hard))
+#
+# NumErr, BER_hard = BER_calc(message_bits, decoded_hard[:message_bits.size]) # bit-error ratio (hard decision)
+#
+# print(np.array_equal(message_bits, decoded_hard[:message_bits.size]))
+# print("conv coding", NumErr, BER_hard)
+#
+# modulated_no_coding = qam_modulator.modulate(message_bits)
+# noisy = awgn_channel.add_noise(modulated_no_coding, EbNo, qam_modulator.bits_per_symbol)
+# demodulated_no_coding = qam_demodulator.demodulate(noisy)
+#
+# NumErr, BER_hard = BER_calc(message_bits, demodulated_no_coding)
+# print("no coding", NumErr, BER_hard)
