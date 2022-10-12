@@ -23,6 +23,23 @@ def bits_to_ints(bits, bits_per_int):
     return symbols
 
 
+def gray_codes(bits_per_symbol: int):
+    if bits_per_symbol % 2 != 0:
+        raise Exception("Генерация кодов Грея для нечетного bits_per_symbol ещё не реализована")
+    order = 2 ** bits_per_symbol
+    codes = []
+    for i in range(order):
+        codes.append(i ^ (i >> 1))
+
+    length = int(np.sqrt(order))
+    for i in range(length):
+        if i % 2 == 1:
+            start = i * length
+            end = (i+1) * length
+            codes[start:end] = codes[start:end][::-1]
+    return codes
+
+
 def sort_constellation_points(complex_numbers):
     return sorted(complex_numbers, key=lambda x: (-x.imag, x.real))
 
