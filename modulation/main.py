@@ -1,4 +1,3 @@
-import sys
 from typing import List
 
 import numpy as np
@@ -11,8 +10,6 @@ from qam_demodulation import QAMDemodulator
 from qam_modulation import QAMModulator
 import commpy.channelcoding.convcode as cc
 from modulation_type import ModulationType
-
-symbols_num = 1_0_000
 
 
 def gen_bits(seed, bits_num: int):
