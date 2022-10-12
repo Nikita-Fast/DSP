@@ -1,3 +1,6 @@
+import sys
+from typing import List
+
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -6,190 +9,138 @@ import qam_modulation
 from channel import AWGNChannel
 from qam_demodulation import QAMDemodulator
 from qam_modulation import QAMModulator
-import default_qam_constellations
 import commpy.channelcoding.convcode as cc
+from modulation_type import ModulationType
 
-symbols_num = 100_000
+symbols_num = 1_0_000
 
 
-def gen_bits(seed, bits_num):
+def gen_bits(seed, bits_num: int):
     np.random.seed(0)
     return np.random.randint(low=0, high=2, size=bits_num)
 
 
 def count_bit_errors(input_bits, output_bits):
-    return np.count_nonzero(input_bits - output_bits)
+    return np.sum(np.abs(input_bits - output_bits), dtype=int)
 
 
-def bit_error_rate(input_bits, output_bits):
-    errs = count_bit_errors(input_bits, output_bits)
-    # print("bit errors: " + str(errs))
-    res = errs / len(input_bits)
-    # print("ber: " + str(res))
-    return res
+def ber_calc(a, b):
+    bit_errors = np.sum(np.abs(a - b), dtype=int)
+    ber = np.mean(np.abs(a - b))
+    return bit_errors, ber
 
 
-def calc_ber_curve(input_bits, bits_per_symbol):
-    t = time.time()
-    BER_points = []
+def calc_ber_curve_fixed_volume(symbols_num: int, bits_per_symbol_ls: List[int], max_ebn0: int):
+    ber_curves = []
+    ber_curves_descs = []
+    ber_points = []
 
-    qam_modulator = QAMModulator(bits_per_symbol, bit_mapping=None)
+    for mod_type in ModulationType:
+        if mod_type == ModulationType.QAM:
+            for bits_per_symbol in bits_per_symbol_ls:
+                qam_modulator = QAMModulator(bits_per_symbol, bit_mapping=None)
+                awgn_channel = AWGNChannel()
+                qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
+
+                in_bits = gen_bits(bits_per_symbol, int(symbols_num * qam_modulator.bits_per_symbol))
+
+                desc = (mod_type.name + "-" + str(2 ** qam_modulator.bits_per_symbol))
+
+                for ebn0 in range(max_ebn0 + 1):
+                    modulated = qam_modulator.modulate(in_bits)
+                    noised = awgn_channel.add_noise(modulated, ebn0, qam_modulator.bits_per_symbol)
+                    demodulated = qam_demodulator.demodulate(noised)
+
+                    _, ber = ber_calc(in_bits, demodulated)
+                    ber_points.append(ber)
+
+                    progress = str(int(100 * ebn0 / max_ebn0)) + "%"
+                    print("", end='\r', flush=True)
+                    print("Modelling of " + desc + " progress: " + progress, end='', flush=False)
+
+                ber_curves.append(ber_points.copy())
+                ber_points.clear()
+
+                ber_curves_descs.append(desc)
+                print("")
+    return ber_curves, ber_curves_descs
+
+
+def calc_ber_curve_balanced_volume(max_volume: int, qam_modulator: QAMModulator, max_ebn0: int):
+    ber_curves = []
+    ber_curves_descs = []
+    ber_points = []
+    name = "QAM-" + str(2 ** qam_modulator.bits_per_symbol)
+
     awgn_channel = AWGNChannel()
     qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
 
-    mod_signal = qam_modulator.modulate(input_bits)
+    bit_pack_size = 100_000 * qam_modulator.bits_per_symbol
 
-    print("mod_time: %s sec", (time.time() - t))
+    print("Computing exact BER for " + name)
+    for ebn0 in range(max_ebn0 + 1):
+        bit_errors = 0
+        bits_processed = 0
+        approx_volume = max_volume
 
-    max_Eb_N0_dB = 20
-    for Eb_N0_dB in range(0, max_Eb_N0_dB):
-        t = time.time()
+        while (bit_errors < 1000 and bits_processed < max_volume and bits_processed < approx_volume):
+            bits = np.random.randint(low=0, high=2, size=bit_pack_size)
 
-        dirty_sig = awgn_channel.add_noise(mod_signal, Eb_N0_dB, qam_modulator.bits_per_symbol)
+            mod_signal = qam_modulator.modulate(bits)
+            dirty_sig = awgn_channel.add_noise(mod_signal, ebn0, qam_modulator.bits_per_symbol)
+            demod_bits = qam_demodulator.demodulate(dirty_sig)
 
-        demod_bits = qam_demodulator.demodulate(dirty_sig)
+            bits_processed += bit_pack_size
+            bit_errors += count_bit_errors(bits, demod_bits)
 
-        ber = bit_error_rate(input_bits, demod_bits)
-        BER_points.append(ber)
-        print("iter_time: %s sec", (time.time() - t))
-    return BER_points
+            if bits_processed % (10 * bit_pack_size) == 0:
+                approx_ber = bit_errors / bits_processed
 
+                if approx_ber > 0:
+                    s = np.format_float_scientific(approx_ber)
+                    a, b, c = s.partition("e-")
+                    approx_volume = (100 / float(a)) * (10 ** int(c))
+            print("", end='\r', flush=True)
+            print("\tebn0 = %d, bits_processed = %d, errs = %d, appr_BER = %.10f"
+                  % (ebn0, bits_processed, bit_errors, (bit_errors / bits_processed)), end='', flush=False)
 
-def calc_ber(bits_per_symbol, Eb_N0_dB):
-    bit_errors = 0
+        ber = bit_errors / bits_processed
+        ber_points.append(ber)
 
-    qam_modulator = QAMModulator(bits_per_symbol, bit_mapping=None)
-    awgn_channel = AWGNChannel()
-    qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
-
-    bit_pack_size = 300_000
-    bits_processed = 0
-    k = 0
-    approx_volume = 1_000_000_000
-    while (bit_errors < 1000 and bits_processed < 1_000_000_000 and bits_processed < approx_volume):
-        np.random.seed(k)
-        k += 1
-        bits = np.random.randint(low=0, high=2, size=bit_pack_size)
-
-        mod_signal = qam_modulator.modulate(bits)
-        dirty_sig = awgn_channel.add_noise(mod_signal, Eb_N0_dB, qam_modulator.bits_per_symbol)
-        demod_bits = qam_demodulator.demodulate(dirty_sig)
-
-        bits_processed += bit_pack_size
-        bit_errors += count_bit_errors(bits, demod_bits)
-        if bits_processed % 2_500_000 == 0:
-            approx_ber = bit_errors / bits_processed
-            print("approx_ber:", approx_ber)
-
-            if approx_ber > 0:
-                s = np.format_float_scientific(approx_ber)
-                a, b, c = s.partition("e-")
-                # print(s.partition("e-"))
-                # print(a, 10 ** int(c))
-                # print(100 / float(a), 10 ** int(c))
-                approx_volume = (100 / float(a)) * (10 ** int(c))
-                print("approx_vol:", approx_volume)
-        if bits_processed % 25_000_000 == 0:
-            print("bits processed:", (bits_processed))
-
-    ber = bit_errors / bits_processed
-    print("Eb_N0_dB=" + str(Eb_N0_dB), "ber=" + str(ber), "k=" + str(k), "bits_processed=" + str(bits_processed))
-    print("------------------------------------")
-    return ber
+    ber_curves.append(ber_points.copy())
+    ber_points.clear()
+    ber_curves_descs.append(name + " balanced volume")
+    return ber_curves, ber_curves_descs
 
 
-def calc_ber_curve_balanced_work(bits_per_symbol):
-    bers = []
-    border = 2e-5
-    Eb_N0_db = 0
-    while 1:
-        ber = calc_ber(bits_per_symbol, Eb_N0_db)
-        bers.append(ber)
-        Eb_N0_db += 1
-
-        if ber < border:
-            break
-    return bers
-
-
-def plot_ber_curve(bits_per_symbol_list):
-    results = []
-    for bits_per_symbol in bits_per_symbol_list:
-        bits = gen_bits(1, int(symbols_num * bits_per_symbol))
-        results.append((bits_per_symbol, calc_ber_curve(bits, bits_per_symbol)))
-    plt.yscale("log")
-    plt.grid(visible='true')
-    plt.xlabel("Eb/N0, dB")
-    plt.ylabel("BER")
-    for (bits_per_symbol, BER_points) in results:
-        plt.plot(BER_points, '--o', label=str(2 ** bits_per_symbol) + '-QAM')
-        plt.legend()
-    plt.show()
-
-
-# bers = calc_ber_curve_balanced_work(bits_per_symbol=1)
-#
-# plt.yscale("log")
-# plt.grid(visible='true')
-# plt.xlabel("Eb/N0, dB")
-# plt.ylabel("BER")
-# plt.plot(bers, '--o', label="balanced_work")
-
-# plot_ber_curve([1])
-
-def calc_ber_curve_for_different_bit_mappings(bits_per_symbol, bit_mappings, mapping_names):
-    BER_curves = []
-    for bit_mapping in bit_mappings:
+def calc_ber_curve_for_different_bit_mappings(bits_per_symbol: int, bit_mappings, mapping_names: List[str],
+                                              max_ebn0: int, symbols_num: int):
+    ber_curves = []
+    ber_curves_descs = []
+    ber_points = []
+    for bit_mapping, mapping_name in zip(bit_mappings, mapping_names):
         qam_modulator = QAMModulator(bits_per_symbol, bit_mapping)
         awgn_channel = AWGNChannel()
         qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
 
-        bits = gen_bits(1, int(symbols_num * bits_per_symbol))
+        bits = gen_bits(1, int(symbols_num * qam_modulator.bits_per_symbol))
         mod_signal = qam_modulator.modulate(bits)
 
-        max_Eb_N0_dB = 20
-        BER_points = []
-        for Eb_N0_dB in range(0, max_Eb_N0_dB):
-            dirty_sig = awgn_channel.add_noise(mod_signal, Eb_N0_dB, qam_modulator.bits_per_symbol)
+        for ebn0 in range(0, max_ebn0 + 1):
+            dirty_sig = awgn_channel.add_noise(mod_signal, ebn0, qam_modulator.bits_per_symbol)
             demod_bits = qam_demodulator.demodulate(dirty_sig)
 
-            ber = bit_error_rate(bits, demod_bits)
-            BER_points.append(ber)
-        BER_curves.append(list.copy(BER_points))
-        BER_points.clear()
-
-    plt.yscale("log")
-    plt.grid(visible='true')
-    plt.xlabel("Eb/N0, dB")
-    plt.ylabel("BER")
-    i = 0
-    for i in range(len(bit_mappings)):
-        plt.plot(BER_curves[i], '--o', label=mapping_names[i])
-        i += 1
-        plt.legend()
-    plt.show()
+            _, ber = ber_calc(bits, demod_bits)
+            ber_points.append(ber)
+        ber_curves.append(ber_points.copy())
+        ber_points.clear()
+        ber_curves_descs.append("QAM-" + str(2 ** qam_modulator.bits_per_symbol) + " " + mapping_name + " mapping")
+    return ber_curves, ber_curves_descs
 
 
-# calc_ber_curve_for_different_bit_mappings(4, [
-#     None,
-#     [13, 9, 1, 5,
-#      12, 8, 0, 4,
-#      14, 10, 2, 6,
-#      15, 11, 3, 7],
-#     [5, 11, 7, 3,
-#      1, 0, 9, 4,
-#      2, 6, 15, 8,
-#      14, 12, 10, 13]
-# ], ["default", "gray", "random"])
-
-def BER_calc(a, b):
-    bit_errors = np.sum(np.abs(a - b))
-    ber = np.mean(np.abs(a - b))
-    return int(bit_errors), ber
-
-
-def convenc_ber(K: int, g_matrix, qam_modulator: qam_modulation.QAMModulator, max_ebn0):
-    in_bits = gen_bits(1, int(symbols_num * qam_modulator.bits_per_symbol))
+def calc_ber_curve_convenc(K: int, g_matrix, qam_modulator: qam_modulation.QAMModulator, max_ebn0: int,
+                           symbols_num: int):
+    in_bits = gen_bits(1, symbols_num * qam_modulator.bits_per_symbol)
     awgn_channel = AWGNChannel()
     qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
 
@@ -216,16 +167,19 @@ def convenc_ber(K: int, g_matrix, qam_modulator: qam_modulation.QAMModulator, ma
             if use_conv_coding:
                 out_bits = cc.viterbi_decode(demodulated, trellis, tb_depth, decoding_type='hard')
 
-            _, ber = BER_calc(in_bits, out_bits[:len(in_bits)])
+            _, ber = ber_calc(in_bits, out_bits[:len(in_bits)])
             ber_points.append(ber)
-            print("convenc =", use_conv_coding, ebn0, "- done")
+
+            print("", end='\r', flush=True)
+            print(("conv_enc" if use_conv_coding else "no_enc") + " ebn0 = %d, ber = %.10f done" % (ebn0, ber), end='',
+                  flush=False)
 
         ber_curves.append(ber_points.copy())
         ber_points.clear()
 
-        desc = ("conv_enc" if use_conv_coding else "no_enc") + " QAM-" + str(2 ** qam_modulator.bits_per_symbol)
+        desc = ("QAM-" + str(2 ** qam_modulator.bits_per_symbol) + " " + ("conv_enc" if use_conv_coding else "no_enc"))
         ber_curves_descs.append(desc)
-        print(desc + "elapsed_time:", (time.time() - t))
+        print("\n" + desc + " elapsed_time: %.2f" % (time.time() - t))
 
     return ber_curves, ber_curves_descs
 
@@ -242,49 +196,26 @@ def plot_ber_curves(ber_curves, ber_curves_descs):
     plt.show()
 
 
-qam_modulator = QAMModulator(4, bit_mapping=None)
-ber_curves, ber_curves_descs = convenc_ber(K=3, g_matrix=np.array([[5, 7]]), qam_modulator=qam_modulator, max_ebn0=15)
-plot_ber_curves(ber_curves, ber_curves_descs)
+# # тест всех видов модуляции на одинаковом объеме символов
+# ber_curves, ber_curves_descs = calc_ber_curve_fixed_volume(symbols_num, bits_per_symbol_ls=[1,2,3,4,5], max_ebn0=20)
+# plot_ber_curves(ber_curves, ber_curves_descs)
+#
+# высчитываем BER по схеме 1000 ошибок vs превышение объема
+# modulator = QAMModulator(bits_per_symbol=2, bit_mapping=None)
+# ber_curves, ber_curves_descs = \
+#     calc_ber_curve_balanced_volume(max_volume=50_000_000, qam_modulator=modulator, max_ebn0=15)
+# plot_ber_curves(ber_curves, ber_curves_descs)
+#
+# тестируем влияние битовой раскладки
+# ber_curves, ber_curves_descs = calc_ber_curve_for_different_bit_mappings(4, [
+#     None,
+#     [0, 1, 2, 3, 15, 14, 13, 12, 7, 6, 5, 4, 8, 9, 10, 11],
+#     qam_modulation.gray_codes(bits_per_symbol=4)
+# ], ["default", "random", "gray"], max_ebn0=15, symbols_num=1_000_000)
+# plot_ber_curves(ber_curves, ber_curves_descs)
 
-# qam_modulator = QAMModulator(4, bit_mapping=None)
-# awgn_channel = AWGNChannel()
-# qam_demodulator = QAMDemodulator.from_qam_modulator(qam_modulator)
-#
-# message_bits = np.random.randint(0, 2, size=40_000)
-#
-# # constraint length
-# K = 3
-#
-# # Trellis structure
-# trellis = cc.Trellis(np.array([K-1]), np.array([[5, 7]]))
-#
-# constraint = int(np.log2(trellis.number_states)) + 1
-#
-# # code has rate 1/2 so approximate traceback depth is
-# tb_depth = 5 * (K - 1)
-#
-# coded_bits = cc.conv_encode(message_bits, trellis) # encoding
-#
-# print(len(coded_bits))
-# modulated = qam_modulator.modulate(coded_bits)
-#
-# EbNo = 0
-#
-# noisy = awgn_channel.add_noise(modulated, EbNo, qam_modulator.bits_per_symbol)
-#
-# demodulated_hard = qam_demodulator.demodulate(noisy)
-#
-# decoded_hard = cc.viterbi_decode(demodulated_hard, trellis, tb_depth, decoding_type='hard') # decoding (hard decision)
-# print(len(decoded_hard))
-#
-# NumErr, BER_hard = BER_calc(message_bits, decoded_hard[:message_bits.size]) # bit-error ratio (hard decision)
-#
-# print(np.array_equal(message_bits, decoded_hard[:message_bits.size]))
-# print("conv coding", NumErr, BER_hard)
-#
-# modulated_no_coding = qam_modulator.modulate(message_bits)
-# noisy = awgn_channel.add_noise(modulated_no_coding, EbNo, qam_modulator.bits_per_symbol)
-# demodulated_no_coding = qam_demodulator.demodulate(noisy)
-#
-# NumErr, BER_hard = BER_calc(message_bits, demodulated_no_coding)
-# print("no coding", NumErr, BER_hard)
+# тестируем влияние свёрточного кодера
+qam_modulator = QAMModulator(bits_per_symbol=4, bit_mapping=None)
+ber_curves, ber_curves_descs = calc_ber_curve_convenc(K=3, g_matrix=np.array([[5, 7]]), qam_modulator=qam_modulator,
+                                                      max_ebn0=14, symbols_num=100_000)
+plot_ber_curves(ber_curves, ber_curves_descs)
