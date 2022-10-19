@@ -67,8 +67,13 @@ class QAMModulator:
 
     def modulate(self, bits):
         """ Преобразуем биты в КАМ символы"""
+        # if len(bits) % self.bits_per_symbol != 0:
+        #     raise ValueError("Number of bits must be multiple of self.bits_per_symbol")
+
         if len(bits) % self.bits_per_symbol != 0:
-            raise ValueError("Number of bits must be multiple of self.bits_per_symbol")
+            diff = len(bits) % self.bits_per_symbol
+            r = self.bits_per_symbol - diff
+            bits = np.pad(bits, (0, r), 'constant')
 
         ints = bits_to_ints(bits, self.bits_per_symbol)
         return self.qam_symbols[ints]
