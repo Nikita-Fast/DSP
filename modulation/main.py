@@ -143,21 +143,26 @@ def calc_ber_curve_convenc(K: int, g_matrix, qam_modulator: qam_modulation.QAMMo
 
     trellis = cc.Trellis(np.array([K - 1]), g_matrix)
     tb_depth = 5 * (K - 1)
+    # code_rate = trellis.k / trellis.n
+    # print(code_rate)
 
     ber_curves = []
     ber_curves_descs = []
     ber_points = []
 
     for use_conv_coding in {False, True}:
-        t = time.time()
+        code_rate = trellis.k / trellis.n if use_conv_coding else 1
         for ebn0 in range(max_ebn0 + 1):
+            t = time.time()
             bits = in_bits
 
             if use_conv_coding:
                 bits = cc.conv_encode(in_bits, trellis)
 
             modulated = qam_modulator.modulate(bits)
-            noised = awgn_channel.add_noise(modulated, ebn0, qam_modulator.bits_per_symbol)
+
+            noised = awgn_channel.add_noise(modulated, ebn0, qam_modulator.bits_per_symbol, code_rate)
+
             demodulated = qam_demodulator.demodulate(noised)
             out_bits = demodulated
 
@@ -167,16 +172,16 @@ def calc_ber_curve_convenc(K: int, g_matrix, qam_modulator: qam_modulation.QAMMo
             _, ber = ber_calc(in_bits, out_bits[:len(in_bits)])
             ber_points.append(ber)
 
-            print("", end='\r', flush=True)
-            print(("conv_enc" if use_conv_coding else "no_enc") + " ebn0 = %d, ber = %.10f done" % (ebn0, ber), end='',
-                  flush=False)
+            print(("conv_enc" if use_conv_coding else "no_enc") + " ebn0 = %d, ber = %.8f, time = %.2f" % (
+            ebn0, ber, time.time() - t))
+
 
         ber_curves.append(ber_points.copy())
         ber_points.clear()
 
         desc = ("QAM-" + str(2 ** qam_modulator.bits_per_symbol) + " " + ("conv_enc" if use_conv_coding else "no_enc"))
         ber_curves_descs.append(desc)
-        print("\n" + desc + " elapsed_time: %.2f" % (time.time() - t))
+        # print(desc + " elapsed_time: %.2f" % (time.time() - t))
 
     return ber_curves, ber_curves_descs
 
@@ -213,6 +218,11 @@ def plot_ber_curves(ber_curves, ber_curves_descs):
 
 # тестируем влияние свёрточного кодера
 qam_modulator = QAMModulator(bits_per_symbol=4, bit_mapping=None)
-ber_curves, ber_curves_descs = calc_ber_curve_convenc(K=3, g_matrix=np.array([[5, 7]]), qam_modulator=qam_modulator,
-                                                      max_ebn0=14, symbols_num=100_000)
+# ber_curves, ber_curves_descs = calc_ber_curve_convenc(K=7, g_matrix=np.array([[171, 133]]), qam_modulator=qam_modulator,
+#                                                       max_ebn0=13, symbols_num=1_000)
+# ber_curves, ber_curves_descs = calc_ber_curve_convenc(K=6, g_matrix=np.array([[75, 53]]), qam_modulator=qam_modulator,
+#                                                       max_ebn0=13, symbols_num=1_000)
+ber_curves, ber_curves_descs = calc_ber_curve_convenc(K=5, g_matrix=np.array([[35, 13]]), qam_modulator=qam_modulator,
+                                                      max_ebn0=13, symbols_num=10_000)
+
 plot_ber_curves(ber_curves, ber_curves_descs)
