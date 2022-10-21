@@ -2,8 +2,12 @@ import numpy as np
 
 
 class BPSKModem:
-    constellation = np.array([-1, 1])
-    bits_per_symbol = 1
+
+    def __init__(self):
+        self.constellation = np.array([-1, 1])
+        self.bits_per_symbol = 1
+        self.order = 2
+        self.name = "BPSK"
 
     def modulate(self, bits):
         return self.constellation[bits]
@@ -15,6 +19,3 @@ class BPSKModem:
             return 2 * np.real(symbols) / noise_var
         else:
             raise ValueError("demod_type must be 'hard' or 'unquantized'")
-
-    def get_name(self):
-        return "BPSK"

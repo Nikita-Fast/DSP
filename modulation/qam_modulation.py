@@ -35,7 +35,7 @@ def gray_codes(bits_per_symbol: int):
     for i in range(length):
         if i % 2 == 1:
             start = i * length
-            end = (i+1) * length
+            end = (i + 1) * length
             codes[start:end] = codes[start:end][::-1]
     return codes
 
@@ -47,8 +47,10 @@ def sort_constellation_points(complex_numbers):
 class QAMModulator:
     """Класс описывающий КАМ модулятор"""
 
-    def __init__(self, bits_per_symbol: int, bit_mapping: Optional):
+    def __init__(self, bits_per_symbol: int, bit_mapping = None):
         self.bits_per_symbol = bits_per_symbol
+        self.order = 2 ** bits_per_symbol
+        self.name = "QAM-" + str(self.order)
 
         if bit_mapping is None:
             self.qam_symbols = default_qam_constellations.get_qam_symbols_with_default_order[bits_per_symbol]
@@ -67,8 +69,6 @@ class QAMModulator:
 
     def modulate(self, bits):
         """ Преобразуем биты в КАМ символы"""
-        # if len(bits) % self.bits_per_symbol != 0:
-        #     raise ValueError("Number of bits must be multiple of self.bits_per_symbol")
 
         if len(bits) % self.bits_per_symbol != 0:
             diff = len(bits) % self.bits_per_symbol
@@ -77,7 +77,3 @@ class QAMModulator:
 
         ints = bits_to_ints(bits, self.bits_per_symbol)
         return self.qam_symbols[ints]
-
-
-    def get_name(self):
-        return "QAM"

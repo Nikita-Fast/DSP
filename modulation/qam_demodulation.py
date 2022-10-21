@@ -31,31 +31,37 @@ class QAMDemodulator:
             mask = np.tile(np.r_[np.zeros(8 - b_len, int), np.ones(b_len, int)], len(ints))
             return bits[np.nonzero(mask)]
 
-    def demodulate(self, symbols):
+    def demodulate(self, symbols, demod_type='hard', noise_var=1.0):
         """Демодулируем символы путём выбора точки созвездия до которой Эвклидово расстояние наименьшее.
         Вычисление происходит путём взятия модуля от матрицы, у которой столбцом является столбец переданных
         символов и из каждой строки вычли строку, составленную из точек сигнального созвездия.
         В целях экономии памяти обработка символов происходит группами"""
-        c = np.array(self.constellation_points)
 
-        l = len(symbols)
-        idxs = [0]
-        acc = 0
+        if demod_type == 'hard':
+            c = np.array(self.constellation_points)
 
-        magic_const = 51_200_000 // int(2 ** self.bits_per_symbol)
-        while acc < l:
-            acc = min(acc + magic_const, l)
-            idxs.append(acc)
+            l = len(symbols)
+            idxs = [0]
+            acc = 0
 
-        n = len(idxs)
-        z = zip(idxs[0:n - 1], idxs[1:n])
-        pairs = [(i, j) for i, j in z]
+            magic_const = 51_200_000 // int(2 ** self.bits_per_symbol)
+            while acc < l:
+                acc = min(acc + magic_const, l)
+                idxs.append(acc)
 
-        demod_ints = np.empty(l, dtype=int)
-        for (a, b) in pairs:
-            res = np.abs(symbols[a:b, None] - c[None, :]).argmin(axis=1)
-            for i in range(a, b):
-                demod_ints[i] = res[i - a]
+            n = len(idxs)
+            z = zip(idxs[0:n - 1], idxs[1:n])
+            pairs = [(i, j) for i, j in z]
 
-        demod_bits = self.__ints_to_bits(demod_ints)
-        return demod_bits
+            demod_ints = np.empty(l, dtype=int)
+            for (a, b) in pairs:
+                res = np.abs(symbols[a:b, None] - c[None, :]).argmin(axis=1)
+                for i in range(a, b):
+                    demod_ints[i] = res[i - a]
+
+            demod_bits = self.__ints_to_bits(demod_ints)
+            return demod_bits
+        elif demod_type == 'unquantized':
+            raise ValueError("'unquantized' demodulation is not implemented for QAM")
+        else:
+            raise ValueError("demod_type must be 'hard' or 'unquantized'")
