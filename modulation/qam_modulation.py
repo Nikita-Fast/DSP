@@ -77,3 +77,7 @@ class QAMModulator:
 
         ints = bits_to_ints(bits, self.bits_per_symbol)
         return self.qam_symbols[ints]
+
+
+    def get_name(self):
+        return "QAM"
