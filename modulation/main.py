@@ -1,5 +1,6 @@
 from typing import List
 
+import commpy
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -35,11 +36,12 @@ class Code:
 
 
 class SystemDescription:
-    def __init__(self, modulator, demodulater, demod_type='hard', code: Code = None):
+    def __init__(self, modulator, demodulater, demod_type='hard', code: Code = None, use_formula=False):
         self.code = code
         self.modulator = modulator
         self.demodulator = demodulater
         self.demod_type = demod_type
+        self.use_formula = use_formula
 
 
 class ComputationParameters:
@@ -86,7 +88,7 @@ def calc_ber_of_one_system(system: SystemDescription, params: ComputationParamet
     trellis = None
 
     code_name = 'no-code' if code is None else str(code)
-    name = "%s-%s" % (modulator.name, code_name)
+    name = "%s-%s-%s-use_formula=%s" % (modulator.name, code_name, system.demod_type, str(system.use_formula))
 
     print("Computing exact BER for %s" % name)
     for ebn0 in params.ebn0_range:
@@ -107,7 +109,7 @@ def calc_ber_of_one_system(system: SystemDescription, params: ComputationParamet
             dirty_sig = awgn_channel.add_noise(mod_signal, ebn0, modulator.bits_per_symbol, code_rate)
 
             noise_var = channel.calc_noise_variance(ebn0, modulator.bits_per_symbol, code_rate)
-            demod_bits = demodulator.demodulate(dirty_sig, system.demod_type, noise_var)
+            demod_bits = demodulator.demodulate(dirty_sig, system.demod_type, noise_var, use_formula=system.use_formula)
             out_bits = demod_bits
 
             if code is not None:
@@ -135,17 +137,32 @@ def calc_ber_of_many_systems(systems: List[SystemDescription], params: List[Comp
 
 
 # Код моделирования
-coder_75_53 = Code(K=6, g_matrix=np.array([[75, 53]]))
-bpsk_modem = bpsk_modem.BPSKModem()
+# coder_75_53 = Code(K=6, g_matrix=np.array([[75, 53]]))
+# coder_7_5 = Code(K=3, g_matrix=np.array([[7, 5]]))
+coder_15_11 = Code(K=4, g_matrix=np.array([[15, 11]]))
+# bpsk_modem = bpsk_modem.BPSKModem()
+qam16_modem = QAMModulator(bits_per_symbol=4)
 
-p1 = ComputationParameters(2500, 50_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 100_000)
-p2 = ComputationParameters(2500, 6_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8], 60_000)
-p3 = ComputationParameters(2500, 6_000_000, [0, 1, 2, 3, 4, 5, 6, 7], 60_000)
+p1 = ComputationParameters(2500, 250_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 25_000)
+# p2 = ComputationParameters(2500, 6_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8], 60_000)
+# p3 = ComputationParameters(2500, 6_000_000, [0, 1, 2, 3, 4, 5, 6, 7], 60_000)
 
-sys1 = SystemDescription(bpsk_modem, bpsk_modem, 'hard', code=None)
-sys2 = SystemDescription(bpsk_modem, bpsk_modem, 'hard', code=coder_75_53)
-sys3 = SystemDescription(bpsk_modem, bpsk_modem, 'unquantized', code=coder_75_53)
+# sys1 = SystemDescription(bpsk_modem, bpsk_modem, 'hard', code=None)
+# sys2 = SystemDescription(bpsk_modem, bpsk_modem, 'hard', code=coder_75_53)
+# sys3 = SystemDescription(bpsk_modem, bpsk_modem, 'unquantized', code=coder_75_53)
 
-results = calc_ber_of_many_systems(systems=[sys1, sys2, sys3], params=[p1, p2, p3])
+# results = calc_ber_of_many_systems(systems=[sys1, sys2, sys3], params=[p1, p2, p3])
+
+sys1 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'hard', code=None)
+
+sys2 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'hard', code=coder_15_11)
+
+sys3 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem),
+                         'unquantized', code=coder_15_11, use_formula=True)
+
+sys4 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'unquantized', code=coder_15_11)
+
+results = calc_ber_of_many_systems(systems=[sys1, sys2, sys3, sys4], params=[p1, p1, p1, p1])
 
 plot_ber_computation_results(results)
+
