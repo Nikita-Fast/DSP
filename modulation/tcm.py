@@ -13,17 +13,19 @@ from qam_modulation import QAMModulator
 import commpy.channelcoding.convcode as cc
 
 
+
+
 class Transition:
     def __init__(self, from_state :int, to_state :int, output_symbols):
         self.from_state = from_state
         self.to_state = to_state
         self.output_symbols = output_symbols
-        self.survived_symbol = -1
+        self.survived_symbol = None
         self.metrica = np.inf
 
     def calc_metrica(self, received_symbol):
         metrics = np.abs(self.output_symbols - received_symbol)
-        self.survived_symbol = np.argmin(metrics)
+        self.survived_symbol = self.output_symbols[np.argmin(metrics)]
         self.metrica = np.min(metrics)
 
     def __eq__(self, other):
@@ -80,6 +82,7 @@ class TCM:
         self.tb_depth = 15
         self.transition_table = np.empty((8, self.tb_depth), dtype=Transition)
         self.curr_column = 0
+        self.decoded_symbols_num = 0
 
     def encode(self, bits):
         coded_bits = cc.conv_encode(bits, self.trellis)
@@ -90,10 +93,12 @@ class TCM:
             c3 = coded_bits[3 * i + 2]
             value = (c1 << 2) + (c2 << 1) + c3
             values[i] = value
-        print("tcm-coder-output: ", values)
+        # print("tcm-coder-output: ", values)
         return self.constellation[values]
 
     def decode(self, r):
+        decoded_bits = np.empty(2 * len(r), dtype=int)
+        decoded_symbols = np.empty(len(r), dtype=int)
         self.state_metrics[0][0] = 0
         for i in range(len(r)):
             # считаем метрики переходов в текущем столбце
@@ -107,14 +112,111 @@ class TCM:
                 self.state_metrics[state][1] = state_metrica
 
             # делаем traceback и удаляем лишние переходы + декодируем символы, если в столбце остался один переход
+            # useless_states = self.get_states_without_outgoing_transitions(self.curr_column)
+            column_num = self.curr_column
+            shift_cnt = 0
+            while True:
+                useless_states = self.get_useless_states(column_num)
+                if len(useless_states) == 0:
+                    # начать проверку на наличие только одного перехода, тогда можем выдать биты
+                    # теперь идем слева направо, пока не станет больше 1 перехода в столбце
+                    while True:
+                        transitions = self.get_all_transitions_at_column(column_num)
+                        if len(transitions) == 1:
+                            shift_cnt = shift_cnt + 1
+                            tr = transitions[0]
+                            decoded_symbol = tr.survived_symbol
+                            from_state = tr.from_state
+                            output_symbols = list(self.trellis.output_table[from_state])
 
+                            if (output_symbols.count(decoded_symbol) == 1):
+                                index = output_symbols.index(decoded_symbol)
+                                j = self.decoded_symbols_num
+                                s = np.binary_repr(index, 2)
+                                bit_array = np.array([int(s[0]), int(s[1])])
+                                decoded_bits[2 * j:2 * j + 2] = bit_array
+
+                            decoded_symbols[self.decoded_symbols_num] = transitions[0].survived_symbol
+                            self.decoded_symbols_num = self.decoded_symbols_num + 1
+                            column_num = column_num + 1
+                        else:
+                            break
+                    break
+                self.remove_transitions_going_to(useless_states, column_num-1)
+                column_num = column_num - 1
 
             # обновляем список стартовых состояний
-            self.update_start_states(transitions)
+            self.update_start_states(self.get_all_transitions_at_column(self.curr_column))
+            # сдвигаем влево таблицу переходов shift_cnt раз
+            self.shift_transition_table_to_left_n_times(shift_cnt)
+            self.curr_column = self.curr_column - shift_cnt
             # сдвигаем влево таблицу метрик состояний
             self.state_metrics[:,0] = self.state_metrics[:,1]
             # в таблице переходов переключились на следующий столбик
             self.curr_column = self.curr_column + 1
+        # print("decoded", decoded_symbols)
+        # print("decoded", decoded_bits)
+        # return decoded_bits
+        return decoded_symbols
+
+    def shift_transition_table_to_left_n_times(self, n):
+        for j in range(n):
+            for i in range(self.tb_depth-1):
+                self.transition_table[:, i] = self.transition_table[:, i+1]
+
+    def get_transitions_number_at_column(self, column_num):
+        cnt = 0
+        for i in range(8):
+            curr_tr = self.transition_table[i][column_num]
+            if curr_tr is not None:
+                cnt = cnt + 1
+        return cnt
+
+    def get_all_transitions_at_column(self, column_num):
+        transitions = []
+        for i in range(8):
+            curr_tr = self.transition_table[i][column_num]
+            if curr_tr is not None:
+                transitions.append(curr_tr)
+        return transitions
+
+    def remove_transitions_going_to(self, to_states, column_num):
+        """в текущем столбце удаляем переходы идущие в указанные состояния, которые находятся справа"""
+        for to_state in to_states:
+            self.__remove_transitions_going_to(to_state, column_num)
+
+    def __remove_transitions_going_to(self, to_state, column_num):
+        """в текущем столбце удаляем переходы идущие в указанное состояние, которое находится справа"""
+        for i in range(8):
+            curr_tr = self.transition_table[i][column_num]
+            if curr_tr is not None and curr_tr.to_state == to_state:
+                self.transition_table[i][column_num] = None
+
+    def get_useless_states(self, curr_column_num):
+        no_outgoing = self.get_states_without_outgoing_transitions(curr_column_num)
+        with_incoming = self.get_states_with_incoming_transitions(curr_column_num-1)
+        useless_states = np.intersect1d(with_incoming, no_outgoing)
+        return list(useless_states)
+
+    def get_states_with_incoming_transitions(self, column_num):
+        with_incoming_states = []
+        for i in range(8):
+            curr_tr = self.transition_table[i][column_num]
+            if curr_tr is not None:
+                with_incoming_states.append(curr_tr.to_state)
+        return list(np.unique(with_incoming_states))
+
+    def get_states_without_outgoing_transitions(self, column_num):
+        from_states = []
+        for i in range(8):
+            curr_tr = self.transition_table[i][column_num]
+            if curr_tr is not None:
+                from_states.append(curr_tr.from_state)
+        no_outgoing_states = []
+        for i in range(4):
+            if from_states.count(i) == 0:
+                no_outgoing_states.append(i)
+        return no_outgoing_states
 
     def get_min_branch_metrica(self, filtered_transitions):
         min_metrica = np.inf
