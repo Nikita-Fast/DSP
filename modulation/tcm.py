@@ -26,6 +26,15 @@ class Transition:
         self.survived_symbol = np.argmin(metrics)
         self.metrica = np.min(metrics)
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.from_state == other.from_state and self.to_state == other.to_state
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 def filter_transitions(transitions, to_state):
     """
@@ -96,12 +105,39 @@ class TCM:
                 filtered = filter_transitions(transitions, state)
                 state_metrica = self.get_min_branch_metrica(filtered)
                 self.state_metrics[state][1] = state_metrica
+
+            # делаем traceback и удаляем лишние переходы + декодируем символы, если в столбце остался один переход
+
+
             # обновляем список стартовых состояний
             self.update_start_states(transitions)
             # сдвигаем влево таблицу метрик состояний
             self.state_metrics[:,0] = self.state_metrics[:,1]
             # в таблице переходов переключились на следующий столбик
             self.curr_column = self.curr_column + 1
+
+    def get_min_branch_metrica(self, filtered_transitions):
+        min_metrica = np.inf
+        index = -1
+        for i in range(len(filtered_transitions)):
+            transition = filtered_transitions[i]
+            from_state_metrica = self.get_state_metrica(transition.from_state)
+            branch_metrica = from_state_metrica + transition.metrica ** 2
+            if branch_metrica < min_metrica:
+                min_metrica = branch_metrica
+                index = i
+
+        # убиваем переход с большей меткой
+        if len(filtered_transitions) > 1:
+            # верно ли, что в таком случае входящих переходов будет всегда 2?
+            k = 1 - index
+            transition_to_be_killed = filtered_transitions[k]
+            for j in range(8):
+                curr = self.transition_table[j][self.curr_column]
+                if curr == transition_to_be_killed:
+                    self.transition_table[j][self.curr_column] = None
+
+        return min_metrica
 
     def extract_metrics_from_transition_table(self):
         metrics = np.full(((8, self.tb_depth)), np.inf)
@@ -144,14 +180,6 @@ class TCM:
 
     def get_state_metrica(self, state_num):
         return self.state_metrics[state_num][0]
-
-    def get_min_branch_metrica(self, filtered_transitions):
-        min_metrica = np.inf
-        for transition in filtered_transitions:
-            from_state_metrica = self.get_state_metrica(transition.from_state)
-            branch_metrica = from_state_metrica + transition.metrica
-            min_metrica = min(min_metrica, branch_metrica)
-        return min_metrica
 
 
 
