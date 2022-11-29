@@ -138,7 +138,7 @@ def calc_ber_of_many_systems(systems: List[SystemDescription], params: List[Comp
 
 # Код моделирования
 # coder_75_53 = Code(K=6, g_matrix=np.array([[75, 53]]))
-# coder_7_5 = Code(K=3, g_matrix=np.array([[7, 5]]))
+coder_7_5 = Code(K=3, g_matrix=np.array([[7, 5]]))
 coder_15_11 = Code(K=4, g_matrix=np.array([[15, 11]]))
 # bpsk_modem = bpsk_modem.BPSKModem()
 qam16_modem = QAMModulator(bits_per_symbol=4)
@@ -162,7 +162,107 @@ sys3 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_mo
 
 sys4 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'unquantized', code=coder_15_11)
 
-results = calc_ber_of_many_systems(systems=[sys1, sys2, sys3, sys4], params=[p1, p1, p1, p1])
+# results = calc_ber_of_many_systems(systems=[sys1, sys2, sys3, sys4], params=[p1, p1, p1, p1])
+#
+# plot_ber_computation_results(results)
 
-plot_ber_computation_results(results)
 
+# class TCM:
+#     def __init__(self):
+#         from numpy import sin
+#         from numpy import cos
+#         from numpy import pi
+#         self.constellation = np.array([1 + 1j * 0,
+#                                        cos(3 * pi / 4) + 1j * sin(3 * pi / 4),
+#                                        cos(1 * pi / 4) + 1j * sin(1 * pi / 4),
+#                                        cos(2 * pi / 4) + 1j * sin(2 * pi / 4),
+#                                        cos(4 * pi / 4) + 1j * sin(4 * pi / 4),
+#                                        cos(7 * pi / 4) + 1j * sin(7 * pi / 4),
+#                                        cos(5 * pi / 4) + 1j * sin(5 * pi / 4),
+#                                        cos(6 * pi / 4) + 1j * sin(6 * pi / 4)])
+#         # self.coder = Code(K=3, g_matrix=np.array([[7, 5]]))
+#
+#         # self.transition_table = np.array([[0, 1, 0, 1], [2, 3, 2, 3], [0, 1, 0, 1], [2, 3, 2, 3]])
+#         # self.output_table = np.array([[0, 3, 4, 7], [2, 1, 6, 5], [3, 0, 7, 4], [1, 2, 5, 6]])
+#         self.trellis = cc.Trellis(memory=np.array([2]), g_matrix=np.array([[7,5]]))
+#         self.trellis.next_state_table = np.array([[0, 1, 0, 1], [2, 3, 2, 3], [0, 1, 0, 1], [2, 3, 2, 3]])
+#         self.trellis.output_table = np.array([[0, 3, 4, 7], [2, 1, 6, 5], [3, 0, 7, 4], [1, 2, 5, 6]])
+#         # self.trellis.output_table = self.constellation[self.output_table]
+#         self.trellis.number_inputs = 4
+#         self.trellis.k = 2
+#         self.trellis.n = 3
+#         self.output_symbols_table = self.constellation[self.trellis.output_table]
+#
+#
+#     def encode(self, bits):
+#         coded_bits = cc.conv_encode(bits, self.trellis)
+#         values = np.empty(len(coded_bits)//3, dtype=int)
+#         for i in range(len(coded_bits)//3):
+#             c1 = coded_bits[3 * i]
+#             c2 = coded_bits[3*i+1]
+#             c3 = coded_bits[3 * i + 2]
+#             value = (c1 << 2) + (c2 << 1) + c3
+#             values[i] = value
+#         print("tcm-coder-output: ", values)
+#         return self.constellation[values]
+#
+#
+#     def decode(self, r):
+#         tb_depth = 3 * 5
+#
+#         states_num = 4
+#         path_metrics = np.full((states_num, 2), np.inf)
+#         path_metrics[0][0] = 0
+#         paths = np.empty((states_num, tb_depth), 'int')
+#         paths[0][0] = 0
+#
+#         pred_states = [0]
+#
+#         metrics_table = np.full((16, tb_depth), np.inf)
+#         time = 0
+#
+#         next_state_table = self.trellis.next_state_table
+#         for i in range(len(r)):
+#             for pred_state in pred_states:
+#                 for k in range(4):
+#                     symbol = self.output_symbols_table[pred_state][k]
+#                     dist = np.abs(r[i] - symbol)
+#                     metrics_table[4*pred_state+k][time] = dist
+#             # отбросим большую метрику в каждом параллельном переходе
+#             for pred_state in pred_states:
+#                 dst_states = np.unique(next_state_table[pred_state])
+#                 for state in dst_states:
+#                     idx = np.where(next_state_table[pred_state] == state)[0]
+#                     i0 = idx[0]
+#                     i1 = idx[1]
+#                     offset = 4*pred_state
+#                     if metrics_table[offset+i0][time] <= metrics_table[offset+i1][time]:
+#                         metrics_table[offset+i1][time] = np.inf
+#                     else:
+#                         metrics_table[offset+i0][time] = np.inf
+#             # считаем метрику каждого состояния
+#             for state in range(4):
+#                 incoming_idx = np.argwhere(next_state_table == state)
+#                 incoming_metrics = []
+#                 for coords in incoming_idx:
+#                     index = coords[0] * 4 + coords[1]
+#                     if (metrics_table[index][time] < np.inf):
+#                         incoming_metrics.append(metrics_table[index][time])
+#                 if len(incoming_metrics) == 1:
+#                     state_metrics[state] =
+
+from tcm import TCM
+
+
+tcm = TCM()
+
+
+bits = np.array([0, 1, 1, 0, 1, 0])
+symbols = tcm.encode(bits)
+print(symbols)
+tcm.decode(np.array([-5,1,-7,3]))
+metrics = tcm.extract_metrics_from_transition_table()
+print(metrics)
+print("end")
+# plt.plot(symbols.real, symbols.imag, 'o')
+# plt.show()
