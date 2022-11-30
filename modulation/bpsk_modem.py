@@ -12,7 +12,7 @@ class BPSKModem:
     def modulate(self, bits):
         return self.constellation[bits]
 
-    def demodulate(self, symbols, demod_type='hard', noise_var=0.0):
+    def demodulate(self, symbols, demod_type='hard', noise_var=0.0, use_formula=False):
         if demod_type == 'hard':
             return np.abs(symbols[:, None] - self.constellation[None, :]).argmin(axis=1)
         elif demod_type == 'unquantized':

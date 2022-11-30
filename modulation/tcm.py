@@ -4,18 +4,18 @@ import commpy.channelcoding.convcode as cc
 
 class TCM:
     def __init__(self):
-        # from numpy import sin
-        # from numpy import cos
-        # from numpy import pi
-        # self.constellation = np.array([1 + 1j * 0,
-        #                                cos(3 * pi / 4) + 1j * sin(3 * pi / 4),
-        #                                cos(1 * pi / 4) + 1j * sin(1 * pi / 4),
-        #                                cos(2 * pi / 4) + 1j * sin(2 * pi / 4),
-        #                                cos(4 * pi / 4) + 1j * sin(4 * pi / 4),
-        #                                cos(7 * pi / 4) + 1j * sin(7 * pi / 4),
-        #                                cos(5 * pi / 4) + 1j * sin(5 * pi / 4),
-        #                                cos(6 * pi / 4) + 1j * sin(6 * pi / 4)])
-        self.constellation = np.array([7, 1, 5, 3, -1, -7, -3, -5])
+        from numpy import sin
+        from numpy import cos
+        from numpy import pi
+        self.constellation = np.array([1 + 1j * 0,
+                                       cos(3 * pi / 4) + 1j * sin(3 * pi / 4),
+                                       cos(1 * pi / 4) + 1j * sin(1 * pi / 4),
+                                       cos(2 * pi / 4) + 1j * sin(2 * pi / 4),
+                                       cos(4 * pi / 4) + 1j * sin(4 * pi / 4),
+                                       cos(7 * pi / 4) + 1j * sin(7 * pi / 4),
+                                       cos(5 * pi / 4) + 1j * sin(5 * pi / 4),
+                                       cos(6 * pi / 4) + 1j * sin(6 * pi / 4)])
+        # self.constellation = np.array([7, 1, 5, 3, -1, -7, -3, -5])
 
         self.trellis = cc.Trellis(memory=np.array([2]), g_matrix=np.array([[7, 5]]))
         self.trellis.next_state_table = np.array([[0, 1, 0, 1], [2, 3, 2, 3], [0, 1, 0, 1], [2, 3, 2, 3]])
@@ -27,10 +27,12 @@ class TCM:
         self.output_symbols_table = self.constellation[self.trellis.output_table]
 
         self.start_states = [0]
-        self.state_metrics = np.full((4, 2), np.inf)
-        self.tb_depth = 15
-        self.transition_table = np.empty((8, self.tb_depth), dtype=Transition)
+        self.state_metrics = None
+        self.tb_depth = 100
+        self.transition_table = None
         self.curr_column = 0
+
+        self.name = "TCM-8-psk"
 
     def encode(self, bits):
         coded_bits = cc.conv_encode(bits, self.trellis)
@@ -46,26 +48,31 @@ class TCM:
     def decode(self, r):
         decoded_bits = np.full(2 * len(r), -1)
         decoded_bits_num = 0
+        self.transition_table = np.empty((8, self.tb_depth), dtype=Transition)
+        self.state_metrics = np.full((4, 2), np.inf)
         self.state_metrics[0][0] = 0
+        self.curr_column = 0
+        self.start_states = [0]
         for i in range(len(r)):
-            # считаем метрики переходов в текущем столбце
+            # Считаем метрики переходов в текущем столбце
             transitions = self.get_outgoing_transitions_from_set(self.start_states)
             calc_metrics_for_transitions(transitions, r[i])
             self.save_transitions_to_transition_table(transitions)
-            # подсчет метрики каждого состояния
+            # Подсчитываем метрики каждого состояния
             for state in range(self.trellis.number_states):
                 filtered = get_transitions_going_to(state, transitions)
                 state_metrica = self.get_min_branch_metrica(filtered)
                 self.state_metrics[state][1] = state_metrica
 
-            # делаем traceback и удаляем лишние переходы + декодируем символы, если в столбце остался лишь один переход
+            # Делаем traceback и удаляем лишние переходы + декодируем символы, если в столбце остался лишь один переход
             column_num = self.curr_column
             symbols_decoded_per_iteration = 0
             while True:
                 useless_states = self.get_useless_states(column_num)
                 if len(useless_states) == 0:
-                    # начинаем проверку на наличие единственного перехода. если он единственный, то можем декодировать биты
-                    # продолжаем процедуру двигаясь слева направо, пока не станет больше 1 перехода в столбце
+                    # Начинаем проверку на наличие единственного перехода. Если он единственный, то можем
+                    # декодировать биты. Продолжаем процедуру двигаясь слева направо, пока не станет больше 1
+                    # перехода в столбце
                     while True:
                         transitions = self.get_all_transitions_at_column(column_num)
                         if len(transitions) == 1:
@@ -86,18 +93,19 @@ class TCM:
                 self.remove_transitions_going_to(useless_states, column_num - 1)
                 column_num = column_num - 1
 
-            # обновляем список стартовых состояний
+            # Обновляем список стартовых состояний
             self.update_start_states(self.get_all_transitions_at_column(self.curr_column))
 
-            # сдвигаем влево таблицу переходов shift_cnt раз
+            # Удаляем из таблицы переходов не нужную более информацию
             self.shift_transition_table_to_left_n_times(symbols_decoded_per_iteration)
             self.curr_column = self.curr_column - symbols_decoded_per_iteration
 
-            # сдвигаем влево таблицу метрик состояний
+            # Сдвигаем влево таблицу метрик состояний
             self.state_metrics[:, 0] = self.state_metrics[:, 1]
 
-            # в таблице переходов переключились на следующий столбик
+            # С таблице переходов переключились на следующий столбик
             self.curr_column = self.curr_column + 1
+        #     что делать если вышли вправо за пределы таблицы?
 
         return decoded_bits
 
@@ -194,6 +202,7 @@ class TCM:
 
     def save_transitions_to_transition_table(self, transitions):
         cnt = 0
+        # print(self.curr_column)
         for tr in transitions:
             self.transition_table[cnt][self.curr_column] = tr
             cnt = cnt + 1

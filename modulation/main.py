@@ -13,9 +13,16 @@ from qam_demodulation import QAMDemodulator
 from qam_modulation import QAMModulator
 import commpy.channelcoding.convcode as cc
 
+from tcm import TCM
 
-def count_bit_errors(input_bits, output_bits):
-    return np.sum(np.abs(input_bits - output_bits), dtype=int)
+
+def count_bit_errors(arr1, arr2):
+    # return np.sum(np.abs(input_bits - output_bits), dtype=int)
+    errs = 0
+    for i in range(min(len(arr1), len(arr2))):
+        if arr1[i] != arr2[i]:
+            errs = errs + 1
+    return errs
 
 
 def ber_calc(a, b):
@@ -153,20 +160,18 @@ p1 = ComputationParameters(2500, 250_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 # results = calc_ber_of_many_systems(systems=[sys1, sys2, sys3], params=[p1, p2, p3])
 
-sys1 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'hard', code=None)
-
-sys2 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'hard', code=coder_15_11)
-
-sys3 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem),
-                         'unquantized', code=coder_15_11, use_formula=True)
-
-sys4 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'unquantized', code=coder_15_11)
-
-# results = calc_ber_of_many_systems(systems=[sys1, sys2, sys3, sys4], params=[p1, p1, p1, p1])
+# sys1 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'hard', code=None)
 #
-# plot_ber_computation_results(results)
+# sys2 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'hard', code=coder_15_11)
+#
+# sys3 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem),
+#                          'unquantized', code=coder_15_11, use_formula=True)
+#
+# sys4 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_modem), 'unquantized', code=coder_15_11)
 
-from tcm import TCM
+# results = calc_ber_of_many_systems(systems=[], params=[])
+
+# plot_ber_computation_results(results)
 
 
 def compare_arrays(arr1, arr2):
@@ -177,15 +182,59 @@ def compare_arrays(arr1, arr2):
     return errs
 
 
+# tcm = TCM()
+#
+# information_bits_to_transmit = 10_000
+# padding = 50
+#
+# bits = np.zeros(information_bits_to_transmit + padding, int)
+# bits[0:10_000] = np.random.randint(low=0, high=2, size=information_bits_to_transmit)
+#
+# symbols = tcm.encode(bits)
+# decoded_bits = tcm.decode(symbols)
+#
+# print("bit errs: %i" % compare_arrays(bits[:information_bits_to_transmit], decoded_bits))
+
+def simulate_tcm(tcm: TCM, params: ComputationParameters):
+    ber_points = []
+
+    awgn_channel = AWGNChannel()
+
+    name = tcm.name
+
+    print("Computing exact BER for %s" % name)
+    for ebn0 in params.ebn0_range:
+        bit_errors = 0
+        bits_processed = 0
+
+        while bit_errors < params.errors_threshold and bits_processed < params.max_processed_bits:
+            input_bits = np.random.randint(low=0, high=2, size=params.bits_process_per_iteration)
+            bits = np.zeros(params.bits_process_per_iteration + 50, int)
+            bits[:params.bits_process_per_iteration] = input_bits
+
+            symbols = tcm.encode(bits)
+            r = awgn_channel.add_noise(symbols, ebn0, tcm.trellis.n, tcm.trellis.k/tcm.trellis.n)
+            decoded_bits = tcm.decode(r)
+
+            bits_processed += params.bits_process_per_iteration
+            bit_errors += count_bit_errors(input_bits, decoded_bits)
+
+            print("ebn0 = %d, bits_processed = %d, errs = %d, appr_BER = %.7f"
+                  % (ebn0, bits_processed, bit_errors, (bit_errors / bits_processed)))
+
+        ber = bit_errors / bits_processed
+        ber_points.append(ber)
+
+    return BERComputationResult(ber_points.copy(), name)
+
+
 tcm = TCM()
+p_tcm = ComputationParameters(2500, 250_000, [0,1,2,3,4,5,6,7,8,9,10], 50_000)
+res_tcm = simulate_tcm(tcm, p_tcm)
 
-information_bits_to_transmit = 10_000
-padding = 50
+bpsk_modem = bpsk_modem.BPSKModem()
+sys_2psk = SystemDescription(bpsk_modem, bpsk_modem, 'hard', code=None)
+p_2psk = ComputationParameters(2500, 50_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 50_000)
+res_2psk = calc_ber_of_one_system(sys_2psk, p_2psk)
 
-bits = np.zeros(information_bits_to_transmit + padding, int)
-bits[0:10_000] = np.random.randint(low=0, high=2, size=information_bits_to_transmit)
-
-symbols = tcm.encode(bits)
-decoded_bits = tcm.decode(symbols)
-
-print("bit errs: %i" % compare_arrays(bits[:information_bits_to_transmit], decoded_bits))
+plot_ber_computation_results([res_2psk, res_tcm])
