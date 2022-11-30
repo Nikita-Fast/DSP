@@ -168,22 +168,24 @@ sys4 = SystemDescription(qam16_modem, QAMDemodulator.from_qam_modulator(qam16_mo
 
 from tcm import TCM
 
+
+def compare_arrays(arr1, arr2):
+    errs = 0
+    for i in range(min(len(arr1), len(arr2))):
+        if arr1[i] != arr2[i]:
+            errs = errs + 1
+    return errs
+
+
 tcm = TCM()
 
-bits = np.random.randint(low=0, high=2, size=1000)
+information_bits_to_transmit = 10_000
+padding = 50
+
+bits = np.zeros(information_bits_to_transmit + padding, int)
+bits[0:10_000] = np.random.randint(low=0, high=2, size=information_bits_to_transmit)
+
 symbols = tcm.encode(bits)
-# print("coded", symbols)
-decoded_symbols = tcm.decode(symbols)
-# metrics = tcm.extract_metrics_from_transition_table()
-# print(metrics)
-# print(tcm.state_metrics)
-# print("end")
-# plt.plot(symbols.real, symbols.imag, 'o')
-# plt.show()
-print(symbols[:20])
-print(decoded_symbols[:20])
-errs = 0
-for i in range(499):
-    if symbols[i] != decoded_symbols[i]:
-        errs = errs + 1
-print(errs)
+decoded_bits = tcm.decode(symbols)
+
+print("bit errs: %i" % compare_arrays(bits[:information_bits_to_transmit], decoded_bits))
