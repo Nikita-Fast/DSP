@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import List
 
 import commpy
@@ -151,6 +152,8 @@ coder_15_11 = Code(K=4, g_matrix=np.array([[15, 11]]))
 qam16_modem = QAMModulator(bits_per_symbol=4)
 
 p1 = ComputationParameters(2500, 250_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 25_000)
+
+
 # p2 = ComputationParameters(2500, 6_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8], 60_000)
 # p3 = ComputationParameters(2500, 6_000_000, [0, 1, 2, 3, 4, 5, 6, 7], 60_000)
 
@@ -213,7 +216,7 @@ def simulate_tcm(tcm: TCM, params: ComputationParameters):
             bits[:params.bits_process_per_iteration] = input_bits
 
             symbols = tcm.encode(bits)
-            r = awgn_channel.add_noise(symbols, ebn0, tcm.trellis.n, tcm.trellis.k/tcm.trellis.n)
+            r = awgn_channel.add_noise(symbols, ebn0, tcm.trellis.n, tcm.trellis.k / tcm.trellis.n)
             decoded_bits = tcm.decode(r)
 
             bits_processed += params.bits_process_per_iteration
@@ -229,12 +232,65 @@ def simulate_tcm(tcm: TCM, params: ComputationParameters):
 
 
 tcm = TCM()
-p_tcm = ComputationParameters(2500, 250_000, [0,1,2,3,4,5,6,7,8,9,10], 50_000)
+p_tcm = ComputationParameters(2500, 250_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 50_000)
 res_tcm = simulate_tcm(tcm, p_tcm)
 
 bpsk_modem = bpsk_modem.BPSKModem()
 sys_2psk = SystemDescription(bpsk_modem, bpsk_modem, 'hard', code=None)
-p_2psk = ComputationParameters(2500, 50_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 50_000)
+p_2psk = ComputationParameters(2500, 5_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 50_000)
 res_2psk = calc_ber_of_one_system(sys_2psk, p_2psk)
 
-plot_ber_computation_results([res_2psk, res_tcm])
+plot_ber_computation_results([res_tcm, res_2psk])
+
+
+class Coder(ABC):
+
+    def __init__(self, trellis):
+        self.trellis = trellis
+
+    @abstractmethod
+    def encode(self, input_bits):
+        pass
+
+
+def simulate(coder: Coder = None, modulator=None, channel=None, demodulator=None, decoder=None,
+             params: ComputationParameters = None, name="unnamed"):
+    if params is None:
+        params = ComputationParameters(2500, 250_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 50_000)
+
+    ber_points = []
+
+    print("Computing exact BER for %s" % name)
+    for ebn0 in params.ebn0_range:
+        bit_errors = 0
+        bits_processed = 0
+
+        while bit_errors < params.errors_threshold and bits_processed < params.max_processed_bits:
+            input_bits = np.random.randint(low=0, high=2, size=params.bits_process_per_iteration)
+            data = np.copy(input_bits)
+
+            if coder is not None:
+                data = coder.encode(data)
+
+            if modulator is not None:
+                data = modulator.modulate(data)
+
+            if channel is not None:
+                data = channel.add_noise(data)
+
+            if demodulator is not None:
+                data = demodulator.demodulate(data)
+
+            if decoder is not None:
+                data = decoder.decode(data)
+
+            bits_processed += params.bits_process_per_iteration
+            bit_errors += count_bit_errors(input_bits, data)
+
+            print("ebn0 = %d, bits_processed = %d, errs = %d, appr_BER = %.7f"
+                  % (ebn0, bits_processed, bit_errors, (bit_errors / bits_processed)))
+
+        ber = bit_errors / bits_processed
+        ber_points.append(ber)
+
+    return BERComputationResult(ber_points.copy(), name)

@@ -47,8 +47,8 @@ class TCM:
 
     def decode(self, r):
         decoded_bits = np.full(2 * len(r), -1)
-        decoded_bits_num = 0
-        self.transition_table = np.empty((8, self.tb_depth), dtype=Transition)
+        decoded_bits_num = len(decoded_bits) - 2
+        self.transition_table = np.empty((8, len(r)), dtype=Transition)
         self.state_metrics = np.full((4, 2), np.inf)
         self.state_metrics[0][0] = 0
         self.curr_column = 0
@@ -64,41 +64,41 @@ class TCM:
                 state_metrica = self.get_min_branch_metrica(filtered)
                 self.state_metrics[state][1] = state_metrica
 
-            # Делаем traceback и удаляем лишние переходы + декодируем символы, если в столбце остался лишь один переход
-            column_num = self.curr_column
-            symbols_decoded_per_iteration = 0
-            while True:
-                useless_states = self.get_useless_states(column_num)
-                if len(useless_states) == 0:
-                    # Начинаем проверку на наличие единственного перехода. Если он единственный, то можем
-                    # декодировать биты. Продолжаем процедуру двигаясь слева направо, пока не станет больше 1
-                    # перехода в столбце
-                    while True:
-                        transitions = self.get_all_transitions_at_column(column_num)
-                        if len(transitions) == 1:
-                            transition = transitions.pop()
-                            decoded_symbol = transition.survived_symbol
-                            output_symbols = list(self.output_symbols_table[transition.from_state])
-
-                            information_bits = output_symbols.index(decoded_symbol)
-                            bit_array = decimal_to_bit_array(information_bits, self.trellis.k)
-                            decoded_bits[decoded_bits_num: decoded_bits_num + self.trellis.k] = bit_array
-                            decoded_bits_num = decoded_bits_num + self.trellis.k
-
-                            column_num = column_num + 1
-                            symbols_decoded_per_iteration = symbols_decoded_per_iteration + 1
-                        else:
-                            break
-                    break
-                self.remove_transitions_going_to(useless_states, column_num - 1)
-                column_num = column_num - 1
+            # # Делаем traceback и удаляем лишние переходы + декодируем символы, если в столбце остался лишь один переход
+            # column_num = self.curr_column
+            # symbols_decoded_per_iteration = 0
+            # while True:
+            #     useless_states = self.get_useless_states(column_num)
+            #     if len(useless_states) == 0:
+            #         # Начинаем проверку на наличие единственного перехода. Если он единственный, то можем
+            #         # декодировать биты. Продолжаем процедуру двигаясь слева направо, пока не станет больше 1
+            #         # перехода в столбце
+            #         while True:
+            #             transitions = self.get_all_transitions_at_column(column_num)
+            #             if len(transitions) == 1:
+            #                 transition = transitions.pop()
+            #                 decoded_symbol = transition.survived_symbol
+            #                 output_symbols = list(self.output_symbols_table[transition.from_state])
+            #
+            #                 information_bits = output_symbols.index(decoded_symbol)
+            #                 bit_array = decimal_to_bit_array(information_bits, self.trellis.k)
+            #                 decoded_bits[decoded_bits_num: decoded_bits_num + self.trellis.k] = bit_array
+            #                 decoded_bits_num = decoded_bits_num + self.trellis.k
+            #
+            #                 column_num = column_num + 1
+            #                 symbols_decoded_per_iteration = symbols_decoded_per_iteration + 1
+            #             else:
+            #                 break
+            #         break
+            #     self.remove_transitions_going_to(useless_states, column_num - 1)
+            #     column_num = column_num - 1
 
             # Обновляем список стартовых состояний
             self.update_start_states(self.get_all_transitions_at_column(self.curr_column))
 
-            # Удаляем из таблицы переходов не нужную более информацию
-            self.shift_transition_table_to_left_n_times(symbols_decoded_per_iteration)
-            self.curr_column = self.curr_column - symbols_decoded_per_iteration
+            # # Удаляем из таблицы переходов не нужную более информацию
+            # self.shift_transition_table_to_left_n_times(symbols_decoded_per_iteration)
+            # self.curr_column = self.curr_column - symbols_decoded_per_iteration
 
             # Сдвигаем влево таблицу метрик состояний
             self.state_metrics[:, 0] = self.state_metrics[:, 1]
@@ -106,6 +106,31 @@ class TCM:
             # С таблице переходов переключились на следующий столбик
             self.curr_column = self.curr_column + 1
         #     что делать если вышли вправо за пределы таблицы?
+
+        self.curr_column = len(r) - 1
+        optimal_path_number = np.argmin(self.state_metrics[:,0])
+        transitions = get_transitions_going_to(optimal_path_number, self.get_all_transitions_at_column(self.curr_column))
+        transition = transitions[0]
+
+        while True:
+            to_state = transition.to_state
+            from_state = transition.from_state
+
+            decoded_symbol = transition.survived_symbol
+            output_symbols = list(self.output_symbols_table[from_state])
+
+            information_bits = output_symbols.index(decoded_symbol)
+            bit_array = decimal_to_bit_array(information_bits, self.trellis.k)
+            decoded_bits[decoded_bits_num: decoded_bits_num + self.trellis.k] = bit_array
+            decoded_bits_num = decoded_bits_num - self.trellis.k
+
+            self.curr_column = self.curr_column - 1
+            if self.curr_column < 0:
+                break
+
+            to_state = from_state
+            transition = (get_transitions_going_to(to_state, self.get_all_transitions_at_column(self.curr_column)))[0]
+
 
         return decoded_bits
 
