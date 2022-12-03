@@ -1083,3 +1083,18 @@ get_qam_symbols_with_default_order = {
     11: np.array(qam_2048_symbols),
     12: np.array(qam_4096_symbols)
 }
+
+get_qam_constellation = {
+    1: np.array(qam_2_symbols),
+    2: np.array(qam_4_symbols),
+    3: np.array(qam_8_symbols),
+    4: np.array(qam_16_symbols),
+    5: np.array(qam_32_symbols),
+    6: np.array(qam_64_symbols),
+    7: np.array(qam_128_symbols),
+    8: np.array(qam_256_symbols),
+    9: np.array(qam_512_symbols),
+    10: np.array(qam_1024_symbols),
+    11: np.array(qam_2048_symbols),
+    12: np.array(qam_4096_symbols)
+}

@@ -1,29 +1,39 @@
 import numpy as np
 import commpy.channelcoding.convcode as cc
+from numpy import sin
+from numpy import cos
+from numpy import pi
+
+from interface import Modulator, Demodulator
 
 
-class TCM:
-    def __init__(self):
-        from numpy import sin
-        from numpy import cos
-        from numpy import pi
-        self.constellation = np.array([1 + 1j * 0,
-                                       cos(3 * pi / 4) + 1j * sin(3 * pi / 4),
-                                       cos(1 * pi / 4) + 1j * sin(1 * pi / 4),
-                                       cos(2 * pi / 4) + 1j * sin(2 * pi / 4),
-                                       cos(4 * pi / 4) + 1j * sin(4 * pi / 4),
-                                       cos(7 * pi / 4) + 1j * sin(7 * pi / 4),
-                                       cos(5 * pi / 4) + 1j * sin(5 * pi / 4),
-                                       cos(6 * pi / 4) + 1j * sin(6 * pi / 4)])
-        # self.constellation = np.array([7, 1, 5, 3, -1, -7, -3, -5])
+def get_default_trellis():
+    trellis = cc.Trellis(memory=np.array([2]), g_matrix=np.array([[7, 5]]))
+    trellis.next_state_table = np.array([[0, 1, 0, 1], [2, 3, 2, 3], [0, 1, 0, 1], [2, 3, 2, 3]])
+    # Таблица выходов. Выходные битовые последовательности длины 3 представлены числами в decimal
+    trellis.output_table = np.array([[0, 3, 4, 7], [2, 1, 6, 5], [3, 0, 7, 4], [1, 2, 5, 6]])
+    trellis.k = 2
+    trellis.n = 3
+    trellis.number_inputs = 4
+    return trellis
 
-        self.trellis = cc.Trellis(memory=np.array([2]), g_matrix=np.array([[7, 5]]))
-        self.trellis.next_state_table = np.array([[0, 1, 0, 1], [2, 3, 2, 3], [0, 1, 0, 1], [2, 3, 2, 3]])
-        # Таблица выходов. Выходные битовые последовательности длины 3 представлены числами в decimal
-        self.trellis.output_table = np.array([[0, 3, 4, 7], [2, 1, 6, 5], [3, 0, 7, 4], [1, 2, 5, 6]])
-        self.trellis.number_inputs = 4
-        self.trellis.k = 2
-        self.trellis.n = 3
+
+class TCM(Modulator, Demodulator):
+    def __init__(self, trellis: cc.Trellis = get_default_trellis()):
+        constellation = np.array([1 + 1j * 0,
+                                  cos(3 * pi / 4) + 1j * sin(3 * pi / 4),
+                                  cos(1 * pi / 4) + 1j * sin(1 * pi / 4),
+                                  cos(2 * pi / 4) + 1j * sin(2 * pi / 4),
+                                  cos(4 * pi / 4) + 1j * sin(4 * pi / 4),
+                                  cos(7 * pi / 4) + 1j * sin(7 * pi / 4),
+                                  cos(5 * pi / 4) + 1j * sin(5 * pi / 4),
+                                  cos(6 * pi / 4) + 1j * sin(6 * pi / 4)])
+        # constellation = np.array([7, 1, 5, 3, -1, -7, -3, -5])
+
+        super().__init__(trellis.n, constellation)
+        self.mode = 'soft'
+
+        self.trellis = trellis
         self.output_symbols_table = self.constellation[self.trellis.output_table]
 
         self.start_states = [0]
@@ -32,9 +42,16 @@ class TCM:
         self.transition_table = None
         self.curr_column = 0
 
-        self.name = "TCM-8-psk"
+    def modulate(self, input_bits):
+        return self.__encode(input_bits)
 
-    def encode(self, bits):
+    def demodulate_hard(self, symbols):
+        raise Exception("TCM не поддерживает жесткий демодулятор")
+
+    def demodulate_soft(self, symbols, noise_variance):
+        return self.__decode(symbols)
+
+    def __encode(self, bits):
         coded_bits = cc.conv_encode(bits, self.trellis)
         values = np.empty(len(coded_bits) // 3, dtype=int)
         for i in range(len(coded_bits) // 3):
@@ -45,7 +62,7 @@ class TCM:
             values[i] = value
         return self.constellation[values]
 
-    def decode(self, r):
+    def __decode(self, r):
         decoded_bits = np.full(2 * len(r), -1)
         decoded_bits_num = len(decoded_bits) - 2
         self.transition_table = np.empty((8, len(r)), dtype=Transition)
@@ -108,8 +125,9 @@ class TCM:
         #     что делать если вышли вправо за пределы таблицы?
 
         self.curr_column = len(r) - 1
-        optimal_path_number = np.argmin(self.state_metrics[:,0])
-        transitions = get_transitions_going_to(optimal_path_number, self.get_all_transitions_at_column(self.curr_column))
+        optimal_path_number = np.argmin(self.state_metrics[:, 0])
+        transitions = get_transitions_going_to(optimal_path_number,
+                                               self.get_all_transitions_at_column(self.curr_column))
         transition = transitions[0]
 
         while True:
@@ -130,7 +148,6 @@ class TCM:
 
             to_state = from_state
             transition = (get_transitions_going_to(to_state, self.get_all_transitions_at_column(self.curr_column)))[0]
-
 
         return decoded_bits
 
