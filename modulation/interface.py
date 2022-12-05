@@ -1,9 +1,10 @@
 from typing import Any, List
 import numpy as np
-import commpy.channelcoding as cc
+import commpy.channelcoding as cc # TODO на мой взгляд сторонних библиотек быть не должно. Если есть острая необходимость ее надо аргументировать
 from matplotlib import pyplot as plt
 
 
+# TODO это явно не к этому файлу
 class BERComputationResult:
     def __init__(self, ber_points: List[float], description: str):
         self.ber_points = ber_points
@@ -19,6 +20,7 @@ class BERComputationResult:
         plt.legend()
         plt.show()
 
+# TODO это явно не к этому файлу
 class ComputationParameters:
     def __init__(self, errors_threshold: int, max_processed_bits: int, enb0_range,
                  bits_process_per_iteration=10_000):
@@ -28,17 +30,22 @@ class ComputationParameters:
         self.bits_process_per_iteration = bits_process_per_iteration
 
 
+# TODO вход - это список (пример демодулятора data = [[info], [snr]] ) выход - это список (пример блок АБГШ - [[data], [snr]])
+# TODO класс должен быть абстрактным
 class Block:
     def process(self, data: np.ndarray) -> np.ndarray:
         pass
 
 
+# TODO модель мне кажется должна быть в отдельном модуле
 class Model:
 
+    # TODO блоки могут соединятся в произвольном порядке. Я думаю надо перечень блоков и лист соединений (или еще как то )
     def __init__(self, blocks: List[Block], name: str = 'default_name'):
         self.blocks = blocks
         self.name = name
 
+    # TODO поток данных должен идти в соответствии с листом соединений (что если у блок  есть обратная связь )
     def __process(self, data: np.ndarray) -> np.ndarray:
         """Пропускаем входные данные последовательно через все блоки и возвращаем результат"""
         output = np.copy(data)
@@ -46,6 +53,7 @@ class Model:
             output = block.process(output)
         return output
 
+    # TODO это отдельно обсудим
     def do_modelling(self, params: ComputationParameters) -> BERComputationResult:
         """Осуществляем моделирование системы с учетом переданных параметров"""
         ber_points = []
@@ -99,7 +107,7 @@ class Model:
                 errs = errs + 1
         return errs
 
-
+# TODO все что ниже пока не надо. Это требует обсуждения . Мне кажется сначала надо разобраться с Block и  Model
 class BlockModulator(Block):
 
     def __init__(self, bits_per_symbol, constellation: np.ndarray):
