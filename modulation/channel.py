@@ -1,6 +1,6 @@
 import numpy as np
 
-from interface import Channel
+from interface import BlockChannel
 
 
 def power(sig):
@@ -16,20 +16,17 @@ def calc_noise_power(ebn0_db, symbols, information_bits_per_symbol):
     return power(symbols) / SNR
 
 
-class AWGNChannel(Channel):
+class AWGNChannel(BlockChannel):
     """Класс описывающий канал с АБГШ"""
 
-    def add_noise(self, symbols, ebn0_db, information_bits_per_symbol):
-        """Добавляем к массиву символов необходимое количество шума, позволяющее
-         получить требуемый уровень EB/N0 выраженный в db"""
-        p = calc_noise_power(ebn0_db, symbols, information_bits_per_symbol)
+    def process(self, data: np.ndarray) -> np.ndarray:
+        p = calc_noise_power(self.ebn0_db, data, self.information_bits_per_symbol)
 
-        symbols_num = len(symbols)
-        awgn = np.sqrt(p / 2) * np.random.randn(symbols_num) + 1j * np.sqrt(p / 2) * np.random.randn(
-            symbols_num)
-        return symbols + awgn
+        symbols_num = len(data)
+        awgn = np.sqrt(p / 2) * np.random.randn(symbols_num) + 1j * np.sqrt(p / 2) * np.random.randn(symbols_num)
+        return data + awgn
 
-    def calc_noise_variance(self, ebn0_db, information_bits_per_symbol) -> float:
-        snr_db = ebn0_db + 10 * np.log10(information_bits_per_symbol)  # Signal-to-Noise ratio (in dB)
+    def calc_noise_variance(self) -> float:
+        snr_db = self.ebn0_db + 10 * np.log10(self.information_bits_per_symbol)  # Signal-to-Noise ratio (in dB)
         noise_var = 10 ** (-snr_db / 10)  # noise variance (power)
         return noise_var

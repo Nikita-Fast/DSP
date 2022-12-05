@@ -1,13 +1,22 @@
 import numpy as np
 import qam_modulation
-from interface import Demodulator
+from interface import BlockDemodulator
 
 
-class QAMDemodulator(Demodulator):
+class QAMDemodulator(BlockDemodulator):
     """Класс описывающий КАМ демодулятор"""
 
     def __init__(self, bits_per_symbol, constellation, mode='hard'):
         super().__init__(bits_per_symbol, constellation, mode)
+
+    def process(self, data: np.ndarray) -> np.ndarray:
+        if self.mode == 'hard':
+            return self.demodulate_hard(data)
+        elif self.mode == 'soft':
+            # как посчитать дисперсию шума?
+            return self.demodulate_soft(data, self.noise_variance)
+        else:
+            raise ValueError("У демодулятора есть только два режима работы: 'hard' и 'soft'")
 
     @classmethod
     def from_qam_modulator(cls, qam_modulator: qam_modulation.QAMModulator, mode='hard'):
