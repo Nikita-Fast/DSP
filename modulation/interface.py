@@ -1,47 +1,21 @@
 import copy
 from typing import Any, List, Dict
 import numpy as np
-# TODO на мой взгляд сторонних библиотек быть не должно. Если есть острая необходимость ее надо аргументировать
-import commpy.channelcoding as cc
-from matplotlib import pyplot as plt
+
+# На мой взгляд сторонних библиотек быть не должно. Если есть острая необходимость ее надо аргументировать
 import uuid
-
-
-# TODO это явно не к этому файлу
-class BERComputationResult:
-    def __init__(self, ber_points: List[float], description: str):
-        self.ber_points = ber_points
-        self.description = description
-
-    def plot(self):
-        plt.yscale("log")
-        plt.grid(visible='true')
-        plt.xlabel("Eb/N0, dB")
-        plt.ylabel("BER")
-
-        plt.plot(self.ber_points, '--o', label=self.description)
-        plt.legend()
-        plt.show()
-
-
-# TODO это явно не к этому файлу
-class ComputationParameters:
-    def __init__(self, errors_threshold: int, max_processed_bits: int, enb0_range,
-                 bits_process_per_iteration=10_000):
-        self.errors_threshold = errors_threshold
-        self.max_processed_bits = max_processed_bits
-        self.ebn0_range = enb0_range
-        self.bits_process_per_iteration = bits_process_per_iteration
 
 
 class MethodCallDescription:
     def __init__(self, method_name: str, inputs: List[int], outputs: List[int]):
+        """Указание блоку вызвать метод с именем method_name на данных с блочных входов с номерами из списка inputs и
+        положить вычисленный результат на блочные выходы с номерами из списка outputs"""
         self.method_name = method_name
         self.inputs = inputs
         self.outputs = outputs
 
 
-# TODO вход - это список (пример демодулятора data = [[info], [snr]] ) выход - это список (пример блок АБГШ - [[data], [snr]])
+# вход - это список (пример демодулятора data = [[info], [snr]] ) выход - это список (пример блок АБГШ - [[data], [snr]])
 # TODO класс должен быть абстрактным
 class Block:
 
@@ -163,64 +137,65 @@ class Model:
             # выбираем те блоки в которые идут связи из текущих блоков
             next_blocks = []
             for connection in self.connections:
-                if curr_blocks.__contains__(connection.from_block) and not next_blocks.__contains__(connection.to_block):
+                if curr_blocks.__contains__(connection.from_block) and not next_blocks.__contains__(
+                        connection.to_block):
                     next_blocks.append(connection.to_block)
 
             curr_blocks = next_blocks
 
     # TODO это отдельно обсудим
-    def do_modelling(self, params: ComputationParameters) -> BERComputationResult:
-        """Осуществляем моделирование системы с учетом переданных параметров"""
-        ber_points = []
-
-        # как передать в блок, представляющий канал, требуемое значение ebn0?
-        # Думаю это полный отстой, как сделать лучше?
-        #############################################################
-        channel_block = None
-        demodulator_block = None
-
-        for block in self.blocks:
-            if isinstance(block, BlockChannel):
-                channel_block = block
-                break
-
-        for block in self.blocks:
-            if isinstance(block, BlockDemodulator):
-                demodulator_block = block
-                break
-        ###############################################################
-        for ebn0 in params.ebn0_range:
-            bit_errors = 0
-            bits_processed = 0
-            # todo добавить специальный информационный блок, который будет передавать другим блокам ebn0_db, ... и т.д.
-            # Думаю так писать плохо
-            channel_block.set_ebn0_db(ebn0)
-            demodulator_block.set_noise_variance(channel_block.calc_noise_variance())
-
-            while bit_errors < params.errors_threshold and bits_processed < params.max_processed_bits:
-                # могут ли входные данные быть не битами?
-                input_data = self.__gen_bits(params.bits_process_per_iteration)
-                output_data = self.__process(input_data)
-                bit_errors += self.__count_errors(input_data, output_data)
-                bits_processed += params.bits_process_per_iteration
-
-                print("ebn0 = %d, bits_processed = %d, errs = %d, appr_BER = %.7f"
-                      % (ebn0, bits_processed, bit_errors, (bit_errors / bits_processed)))
-
-            ber = bit_errors / bits_processed
-            ber_points.append(ber)
-        return BERComputationResult(ber_points.copy(), 'default_name')
-
-    def __gen_bits(self, size):
-        return np.random.randint(low=0, high=2, size=size)
-
-    def __count_errors(self, arr1, arr2):
-        """Если длины сравниваемых массивов неравны, то сравниваются куски длинной равной длине меньшего из массивов"""
-        errs = 0
-        for i in range(min(len(arr1), len(arr2))):
-            if arr1[i] != arr2[i]:
-                errs = errs + 1
-        return errs
+    # def do_modelling(self, params: ComputationParameters) -> BERComputationResult:
+    #     """Осуществляем моделирование системы с учетом переданных параметров"""
+    #     ber_points = []
+    #
+    #     # как передать в блок, представляющий канал, требуемое значение ebn0?
+    #     # Думаю это полный отстой, как сделать лучше?
+    #     #############################################################
+    #     channel_block = None
+    #     demodulator_block = None
+    #
+    #     for block in self.blocks:
+    #         if isinstance(block, BlockChannel):
+    #             channel_block = block
+    #             break
+    #
+    #     for block in self.blocks:
+    #         if isinstance(block, BlockDemodulator):
+    #             demodulator_block = block
+    #             break
+    #     ###############################################################
+    #     for ebn0 in params.ebn0_range:
+    #         bit_errors = 0
+    #         bits_processed = 0
+    #         # todo добавить специальный информационный блок, который будет передавать другим блокам ebn0_db, ... и т.д.
+    #         # Думаю так писать плохо
+    #         channel_block.set_ebn0_db(ebn0)
+    #         demodulator_block.set_noise_variance(channel_block.calc_noise_variance())
+    #
+    #         while bit_errors < params.errors_threshold and bits_processed < params.max_processed_bits:
+    #             # могут ли входные данные быть не битами?
+    #             input_data = self.__gen_bits(params.bits_process_per_iteration)
+    #             output_data = self.__process(input_data)
+    #             bit_errors += self.__count_errors(input_data, output_data)
+    #             bits_processed += params.bits_process_per_iteration
+    #
+    #             print("ebn0 = %d, bits_processed = %d, errs = %d, appr_BER = %.7f"
+    #                   % (ebn0, bits_processed, bit_errors, (bit_errors / bits_processed)))
+    #
+    #         ber = bit_errors / bits_processed
+    #         ber_points.append(ber)
+    #     return BERComputationResult(ber_points.copy(), 'default_name')
+    #
+    # def __gen_bits(self, size):
+    #     return np.random.randint(low=0, high=2, size=size)
+    #
+    # def __count_errors(self, arr1, arr2):
+    #     """Если длины сравниваемых массивов неравны, то сравниваются куски длинной равной длине меньшего из массивов"""
+    #     errs = 0
+    #     for i in range(min(len(arr1), len(arr2))):
+    #         if arr1[i] != arr2[i]:
+    #             errs = errs + 1
+    #     return errs
 
 
 # TODO все что ниже пока не надо. Это требует обсуждения . Мне кажется сначала надо разобраться с Block и  Model
@@ -262,9 +237,9 @@ class BlockDemodulator(Block):
         pass
 
 
-class Coder:
+class BlockCoder(Block):
     def __init__(self):
-        pass
+        super().__init__()
 
     def get_code_rate(self) -> float:
         pass
@@ -273,81 +248,128 @@ class Coder:
         pass
 
 
-class ConvolutionalCoder(Coder):
-
-    def __init__(self, memory=None, g_matrix=None, trellis: cc.Trellis = None):
-        """Конструктор либо получает готовый треллис, либо создает его. Треллис полностью описывает кодер"""
+class BlockConvolutionalCoder(BlockCoder):
+    def __init__(self, trellis):
         super().__init__()
-        if trellis is None:
-            if memory is not None and g_matrix is not None:
-                self.trellis = cc.Trellis(memory, g_matrix)
-            else:
-                raise ValueError("Для описания кодера нужен либо треллис, либо память и генераторная матрица "
-                                 "для построения треллиса")
-        else:
-            self.trellis = trellis
+        self.trellis = trellis
 
     def get_code_rate(self) -> float:
         return self.trellis.k / self.trellis.n
 
     def encode(self, input_bits) -> Any:
-        return cc.conv_encode(input_bits, self.trellis)
-
-
-class Modulator:
-    def __init__(self, bits_per_symbol, constellation: np.ndarray):
-        """
-
-        :param bits_per_symbol: Количество битов в одном символе
-        :param constellation: Список символов в созвездии, представленных комплексными числами. При переводе позици
-        символа внутри списка в двоичную с.с. получим битовую последовательность, соответствующую данному символу
-        """
-        self.bits_per_symbol = bits_per_symbol
-        self.constellation = constellation
-        pass
-
-    def modulate(self, input_bits) -> Any:
         pass
 
 
-class Channel:
+class BlockDecoder(Block):
 
-    def add_noise(self, symbols, ebn0_db, information_bits_per_symbol) -> Any:
-        pass
-
-    def calc_noise_variance(self, ebn0_db, information_bits_per_symbol) -> float:
-        pass
-
-
-class Demodulator:
-    def __init__(self, bits_per_symbol, constellation: np.ndarray, mode='hard'):
-        self.bits_per_symbol = bits_per_symbol
-        self.constellation = constellation
+    def __init__(self, mode='hard'):
+        super().__init__()
         self.mode = mode
 
-    def demodulate_hard(self, symbols) -> Any:
-        pass
-
-    def demodulate_soft(self, symbols, noise_variance) -> Any:
+    def decode(self, data) -> Any:
         pass
 
 
-class Decoder:
-    def decode(self, bits, llrs=None) -> Any:
-        pass
-
-
-class ConvolutionalDecoder(Decoder):
-    def __init__(self, trellis: cc.Trellis):
+class BlockConvolutionalDecoder(BlockDecoder):
+    def __init__(self, trellis, mode='hard'):
+        super().__init__()
         self.trellis = trellis
+        self.mode = mode
 
     @classmethod
-    def from_coder(cls, coder: ConvolutionalCoder):
-        return cls(coder.trellis)
+    def from_coder(cls, coder: BlockConvolutionalCoder, mode='hard'):
+        return cls(coder.trellis, mode)
 
-    def decode(self, bits, llrs=None) -> Any:
-        if llrs is None:
-            return cc.viterbi_decode(bits, self.trellis)
-        else:
-            return cc.viterbi_decode(llrs, self.trellis, decoding_type='unquantized')
+    def decode(self, data) -> Any:
         pass
+
+
+# class Coder:
+#     def __init__(self):
+#         pass
+#
+#     def get_code_rate(self) -> float:
+#         pass
+#
+#     def encode(self, input_bits) -> Any:
+#         pass
+#
+#
+# class ConvolutionalCoder(Coder):
+#
+#     def __init__(self, memory=None, g_matrix=None, trellis: cc.Trellis = None):
+#         """Конструктор либо получает готовый треллис, либо создает его. Треллис полностью описывает кодер"""
+#         super().__init__()
+#         if trellis is None:
+#             if memory is not None and g_matrix is not None:
+#                 self.trellis = cc.Trellis(memory, g_matrix)
+#             else:
+#                 raise ValueError("Для описания кодера нужен либо треллис, либо память и генераторная матрица "
+#                                  "для построения треллиса")
+#         else:
+#             self.trellis = trellis
+#
+#     def get_code_rate(self) -> float:
+#         return self.trellis.k / self.trellis.n
+#
+#     def encode(self, input_bits) -> Any:
+#         return cc.conv_encode(input_bits, self.trellis)
+#
+#
+# class Modulator:
+#     def __init__(self, bits_per_symbol, constellation: np.ndarray):
+#         """
+#
+#         :param bits_per_symbol: Количество битов в одном символе
+#         :param constellation: Список символов в созвездии, представленных комплексными числами. При переводе позици
+#         символа внутри списка в двоичную с.с. получим битовую последовательность, соответствующую данному символу
+#         """
+#         self.bits_per_symbol = bits_per_symbol
+#         self.constellation = constellation
+#         pass
+#
+#     def modulate(self, input_bits) -> Any:
+#         pass
+#
+#
+# class Channel:
+#
+#     def add_noise(self, symbols, ebn0_db, information_bits_per_symbol) -> Any:
+#         pass
+#
+#     def calc_noise_variance(self, ebn0_db, information_bits_per_symbol) -> float:
+#         pass
+#
+#
+# class Demodulator:
+#     def __init__(self, bits_per_symbol, constellation: np.ndarray, mode='hard'):
+#         self.bits_per_symbol = bits_per_symbol
+#         self.constellation = constellation
+#         self.mode = mode
+#
+#     def demodulate_hard(self, symbols) -> Any:
+#         pass
+#
+#     def demodulate_soft(self, symbols, noise_variance) -> Any:
+#         pass
+#
+#
+# class Decoder:
+#     def decode(self, bits, llrs=None) -> Any:
+#         pass
+#
+#
+# class ConvolutionalDecoder(Decoder):
+#     def __init__(self, trellis: cc.Trellis):
+#         self.trellis = trellis
+#
+#     @classmethod
+#     def from_coder(cls, coder: ConvolutionalCoder):
+#         return cls(coder.trellis)
+#
+#     def decode(self, bits, llrs=None) -> Any:
+#         if llrs is None:
+#             return cc.viterbi_decode(bits, self.trellis)
+#         else:
+#             return cc.viterbi_decode(llrs, self.trellis, decoding_type='unquantized')
+#         pass

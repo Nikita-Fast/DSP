@@ -61,15 +61,3 @@ class QAMModulator(BlockModulator):
 
         ints = bits_to_ints(data, self.bits_per_symbol)
         return self.constellation[ints]
-
-    # def modulate(self, bits):
-    #     """ Преобразуем биты в КАМ символы"""
-    #
-    #     # добавим нулевых битов, чтобы их общее число было кратно количеству битов приходящихся на один символ
-    #     if len(bits) % self.bits_per_symbol != 0:
-    #         diff = len(bits) % self.bits_per_symbol
-    #         r = self.bits_per_symbol - diff
-    #         bits = np.pad(bits, (0, r), 'constant')
-    #
-    #     ints = bits_to_ints(bits, self.bits_per_symbol)
-    #     return self.constellation[ints]

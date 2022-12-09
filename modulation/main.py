@@ -1,47 +1,51 @@
 from typing import List
 import matplotlib.pyplot as plt
 
-import bpsk_modem
+# import bpsk_modem
 import default_qam_constellations
 from channel import AWGNChannel
+from conv_coder import ConvCoder, ConvDecoder
 from qam_demodulation import QAMDemodulator
 from qam_modulation import QAMModulator
-from tcm import TCM
+# from tcm import TCM
 from interface import *
+import commpy.channelcoding as cc
 
 
-# # TODO это явно не к этому файлу
-# class BERComputationResult:
-#     def __init__(self, ber_points: List[float], description: str):
-#         self.ber_points = ber_points
-#         self.description = description
-#
-#     def plot(self):
-#         plt.yscale("log")
-#         plt.grid(visible='true')
-#         plt.xlabel("Eb/N0, dB")
-#         plt.ylabel("BER")
-#
-#         plt.plot(self.ber_points, '--o', label=self.description)
-#         plt.legend()
-#         plt.show()
-#
-# # TODO это явно не к этому файлу
-# class ComputationParameters:
-#     def __init__(self, errors_threshold: int, max_processed_bits: int, enb0_range,
-#                  bits_process_per_iteration=10_000):
-#         self.errors_threshold = errors_threshold
-#         self.max_processed_bits = max_processed_bits
-#         self.ebn0_range = enb0_range
-#         self.bits_process_per_iteration = bits_process_per_iteration
+class BERComputationResult:
+    def __init__(self, ber_points: List[float], description: str):
+        self.ber_points = ber_points
+        self.description = description
 
-# def count_bit_errors(arr1, arr2):
-#     # return np.sum(np.abs(input_bits - output_bits), dtype=int)
-#     errs = 0
-#     for i in range(min(len(arr1), len(arr2))):
-#         if arr1[i] != arr2[i]:
-#             errs = errs + 1
-#     return errs
+    def plot(self):
+        plt.yscale("log")
+        plt.grid(visible='true')
+        plt.xlabel("Eb/N0, dB")
+        plt.ylabel("BER")
+
+        plt.plot(self.ber_points, '--o', label=self.description)
+        plt.legend()
+        plt.show()
+
+
+class ComputationParameters:
+    def __init__(self, errors_threshold: int, max_processed_bits: int, enb0_range,
+                 bits_process_per_iteration=10_000):
+        self.errors_threshold = errors_threshold
+        self.max_processed_bits = max_processed_bits
+        self.ebn0_range = enb0_range
+        self.bits_process_per_iteration = bits_process_per_iteration
+
+
+def count_bit_errors(arr1, arr2):
+    # return np.sum(np.abs(input_bits - output_bits), dtype=int)
+    errs = 0
+    for i in range(min(len(arr1), len(arr2))):
+        if arr1[i] != arr2[i]:
+            errs = errs + 1
+    return errs
+
+
 #
 #
 # def ber_calc(a, b):
@@ -182,27 +186,41 @@ from interface import *
 # res = model.do_modelling(params)
 # res.plot()
 
+trellis = cc.Trellis(np.array([3]), g_matrix=np.array([[7, 5]]))
+coder_7_5 = ConvCoder(trellis)
+decoder_7_5 = ConvDecoder.from_coder(coder_7_5, mode='unquantized')
+
 modulator = QAMModulator()
 awgnc = AWGNChannel(information_bits_per_symbol=modulator.bits_per_symbol)
-demodulator = QAMDemodulator.from_qam_modulator(modulator, mode='hard')
+demodulator = QAMDemodulator.from_qam_modulator(modulator, mode='soft')
 
 info = Block()
-# ebn0_db = 15
-info.block_output = [[15]]
+ebn0_db = 6
+info.block_output = [[ebn0_db]]
 
-connections = [Connection(modulator, 0, awgnc, 0), Connection(info, 0, awgnc, 1),
-               Connection(awgnc, 0, demodulator, 0), Connection(awgnc, 1, demodulator, 1)]
+connections = [Connection(coder_7_5, 0, modulator, 0),
+               Connection(modulator, 0, awgnc, 0),
+               Connection(info, 0, awgnc, 1),
+               Connection(awgnc, 0, demodulator, 0),
+               Connection(awgnc, 1, demodulator, 1),
+               Connection(demodulator, 0, decoder_7_5, 0)]
 
 block_configs = {
+    coder_7_5.id: [MethodCallDescription('encode', inputs=[0], outputs=[0])],
     modulator.id: [MethodCallDescription('process', inputs=[0], outputs=[0])],
     awgnc.id: [MethodCallDescription('process', inputs=[0, 1], outputs=[0]),
                MethodCallDescription('calc_noise_variance', inputs=[1], outputs=[1])],
-    demodulator.id: [MethodCallDescription('process', inputs=[0, 1], outputs=[0])]
+    demodulator.id: [MethodCallDescription('process', inputs=[0, 1], outputs=[0])],
+    decoder_7_5.id: [MethodCallDescription('decode', inputs=[0], outputs=[0])]
 }
 
-model = Model(blocks=[info, modulator, awgnc, demodulator], starting_blocks=[modulator], final_block=demodulator,
-              connections=connections, block_configs=block_configs)
+model = Model(blocks=[info, modulator, awgnc, demodulator, coder_7_5, decoder_7_5],
+              starting_blocks=[coder_7_5],
+              final_block=decoder_7_5,
+              connections=connections,
+              block_configs=block_configs)
 
-data = np.array([0,0,1,1,0,1,1,0,0,0,1,1,0,1,1,0], dtype=int)
-res = model.process(data)
-print(res)
+data = np.random.randint(low=0, high=2, size=10_000)
+output = model.process(data)
+decoded_bits = output[0].pop()
+print("ebn0_db = %i, bit_errs = %i" % (ebn0_db, count_bit_errors(data, decoded_bits)))
