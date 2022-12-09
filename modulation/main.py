@@ -10,6 +10,31 @@ from tcm import TCM
 from interface import *
 
 
+# # TODO это явно не к этому файлу
+# class BERComputationResult:
+#     def __init__(self, ber_points: List[float], description: str):
+#         self.ber_points = ber_points
+#         self.description = description
+#
+#     def plot(self):
+#         plt.yscale("log")
+#         plt.grid(visible='true')
+#         plt.xlabel("Eb/N0, dB")
+#         plt.ylabel("BER")
+#
+#         plt.plot(self.ber_points, '--o', label=self.description)
+#         plt.legend()
+#         plt.show()
+#
+# # TODO это явно не к этому файлу
+# class ComputationParameters:
+#     def __init__(self, errors_threshold: int, max_processed_bits: int, enb0_range,
+#                  bits_process_per_iteration=10_000):
+#         self.errors_threshold = errors_threshold
+#         self.max_processed_bits = max_processed_bits
+#         self.ebn0_range = enb0_range
+#         self.bits_process_per_iteration = bits_process_per_iteration
+
 # def count_bit_errors(arr1, arr2):
 #     # return np.sum(np.abs(input_bits - output_bits), dtype=int)
 #     errs = 0
@@ -147,12 +172,79 @@ from interface import *
 #
 # plot_ber_computation_results(results)
 
+# modulator = QAMModulator()
+# awgnc = AWGNChannel(ebn0_db=0, information_bits_per_symbol=modulator.bits_per_symbol)
+# demodulator = QAMDemodulator.from_qam_modulator(modulator)
+#
+# model = Model([modulator, awgnc, demodulator], name="QAM-16")
+#
+# params = ComputationParameters(2500, 5_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 250_000)
+# res = model.do_modelling(params)
+# res.plot()
+
+# class Container:
+#     def __init__(self):
+#         self.inputs = [[]]
+#         self.outputs = [[]]
+#
+#     def send(self, output_num, dst, input_num):
+#         dst.inputs[input_num] = self.outputs[output_num]
+#
+#
+# a = Container()
+# b = Container()
+#
+# a.outputs[0] = [1,2,3,5]
+# a.send(0, b, 0)
+# print(b.inputs[0])
+
+
+class TestBlock:
+    def __init__(self, name='my block'):
+        self.name = name
+
+    def method_1(self):
+        print(self.name)
+
+    def method_2(self, x, y):
+        print(y, x)
+
+    def method_3(self, arr: np.ndarray, ebn0: float):
+        s = arr.sum()
+        print(s, ebn0)
+
+    def method_default(self):
+        print('default')
+
+    def test_get_attr(self, name: str, data:List[List], inputs: List[int]):
+        data_for_method = [data[i] for i in inputs]
+        method = getattr(self, name)
+
+        args = []
+        for sub_list in data_for_method:
+            args.append(sub_list.pop())
+
+        method(*args)
+
+
+# b = TestBlock()
+# b.test_get_attr('method_3', [[np.array([1,2,3,4,5])],[0.404]], [0,1])
+
 modulator = QAMModulator()
-awgnc = AWGNChannel(ebn0_db=0, information_bits_per_symbol=modulator.bits_per_symbol)
+awgnc = AWGNChannel(information_bits_per_symbol=modulator.bits_per_symbol)
 demodulator = QAMDemodulator.from_qam_modulator(modulator)
 
-model = Model([modulator, awgnc, demodulator], name="QAM-16")
+connections = []
+block_configs = {
+    modulator.id: [MethodCallDescription('process', [0], [0])]
+}
 
-params = ComputationParameters(2500, 5_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 250_000)
-res = model.do_modelling(params)
-res.plot()
+model = Model(blocks=[modulator], starting_blocks=[modulator], final_block=modulator,
+              connections=connections, block_configs=block_configs)
+
+# params = ComputationParameters(2500, 5_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 250_000)
+# res = model.do_modelling(params)
+# res.plot()
+data = np.array([0,0,1,1,0,1,1,0,0,0,1,1,0,1,1,0], dtype=int)
+res = model.process(data)
+print(res)

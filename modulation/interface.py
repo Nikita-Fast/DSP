@@ -1,7 +1,10 @@
-from typing import Any, List
+import copy
+from typing import Any, List, Dict
 import numpy as np
-import commpy.channelcoding as cc # TODO на мой взгляд сторонних библиотек быть не должно. Если есть острая необходимость ее надо аргументировать
+# TODO на мой взгляд сторонних библиотек быть не должно. Если есть острая необходимость ее надо аргументировать
+import commpy.channelcoding as cc
 from matplotlib import pyplot as plt
+import uuid
 
 
 # TODO это явно не к этому файлу
@@ -20,6 +23,7 @@ class BERComputationResult:
         plt.legend()
         plt.show()
 
+
 # TODO это явно не к этому файлу
 class ComputationParameters:
     def __init__(self, errors_threshold: int, max_processed_bits: int, enb0_range,
@@ -30,28 +34,166 @@ class ComputationParameters:
         self.bits_process_per_iteration = bits_process_per_iteration
 
 
+class MethodCallDescription:
+    def __init__(self, method_name: str, inputs: List[int], outputs: List[int]):
+        self.method_name = method_name
+        self.inputs = inputs
+        self.outputs = outputs
+
+
 # TODO вход - это список (пример демодулятора data = [[info], [snr]] ) выход - это список (пример блок АБГШ - [[data], [snr]])
 # TODO класс должен быть абстрактным
 class Block:
-    def process(self, data: np.ndarray) -> np.ndarray:
-        pass
+
+    def __init__(self):
+        self.block_output = None
+        self.id = uuid.uuid4()
+
+    def __eq__(self, other):
+        return self.id == other.id
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    # def process(self, data: np.ndarray) -> np.ndarray:
+    #     """можно считать что параметр data это данные со всех входов этого блока, т.е. это список списков.
+    #     Далее пользователь сам настраивает в какие методы подавать данные с каких входов.
+    #
+    #     """
+    #     pass
+
+    def process1(self, data: List, config: List[MethodCallDescription]) -> None:
+        """Можно считать что параметр data это данные со всех входов этого блока, т.е. это список списков.
+        Далее пользователь сам настраивает в какие методы подавать данные с каких входов и на какие выходы
+        подавать результаты с помощью параметра config
+        """
+        max_output_num = 0
+        for method_descr in config:
+            max_output_num = max(max_output_num, *method_descr.outputs)
+
+        block_output = [[]]
+        if max_output_num > 0:
+            block_output = [[] for i in range(max_output_num)]
+
+        for method_descr in config:
+            # как в метод вызываемый по имени передать входные аргументы?
+            # с помощью * перед списком аргументов
+
+            data_for_method = [data[i] for i in method_descr.inputs]
+            method = getattr(self, method_descr.method_name)
+
+            args = []
+            for sub_list in data_for_method:
+                args.append(sub_list.pop())
+
+            method_output = method(*args)
+
+            for output_num in method_descr.outputs:
+                block_output[output_num] = method_output
+
+        self.block_output = copy.deepcopy(block_output)
+        # return block_output
+
+
+class Connection:
+    def __init__(self, from_block: Block, from_output: int, to_block: Block, to_input: int):
+        self.from_block = from_block
+        self.from_output = from_output
+        self.to_block = to_block
+        self.to_input = to_input
+
+
+def get_connections_to(to_block: Block, connections: List[Connection]):
+    proper_connections = []
+    for connection in connections:
+        if connection.to_block == to_block:
+            proper_connections.append(connection)
+    return proper_connections
+
+
+def get_connections_from(from_block: Block, connections: List[Connection]):
+    proper_connections = []
+    for connection in connections:
+        if connection.from_block == from_block:
+            proper_connections.append(connection)
+    return proper_connections
 
 
 # TODO модель мне кажется должна быть в отдельном модуле
 class Model:
 
     # TODO блоки могут соединятся в произвольном порядке. Я думаю надо перечень блоков и лист соединений (или еще как то )
-    def __init__(self, blocks: List[Block], name: str = 'default_name'):
+    def __init__(self, blocks: List[Block], connections: List[Connection], starting_blocks: List[Block],
+                 block_configs: Dict[uuid.UUID, List[MethodCallDescription]], final_block: Block):
+        """Может ли стартовых блоков быть несколько?
+        например несколько кодеров, стоящих параллельно, а не последовательно"""
         self.blocks = blocks
-        self.name = name
+        self.connections = connections
+        self.starting_blocks = starting_blocks
+        self.block_configs = block_configs
+        self.final_block = final_block
 
-    # TODO поток данных должен идти в соответствии с листом соединений (что если у блок  есть обратная связь )
-    def __process(self, data: np.ndarray) -> np.ndarray:
+    # TODO поток данных должен идти в соответствии с листом соединений (что если у блока есть обратная связь )
+    def process(self, data: np.ndarray) -> List:
         """Пропускаем входные данные последовательно через все блоки и возвращаем результат"""
-        output = np.copy(data)
-        for block in self.blocks:
-            output = block.process(output)
-        return output
+        # output = np.copy(data)
+        #
+        # i = 0
+        # curr_block = self.blocks[0]
+        # output = curr_block.process(output)
+        #
+        # for block in self.blocks:
+        #     output = block.process(output)
+        # return output
+
+        # возможно стоит создать специальный блок, соединенный со стартовыми, который выдаст начальные данные
+        initial_data_block = Block()
+        initial_data_block.block_output = [[data]]
+        for starting_block in self.starting_blocks:
+            connection = Connection(initial_data_block, 0, starting_block, 0)
+            self.connections.append(connection)
+
+        curr_blocks = self.starting_blocks
+
+        # как прервать вечный цикл? По-идее тогда, когда финальный блок завершит обработку.
+        # может ли финальных блоков быть несколько?
+        while True:
+            for block in curr_blocks:
+                # нужно получить входные данные для блока от других предыдущих блоков или
+                # получить начальные данные от моделирующей системы
+
+                connections_to = get_connections_to(block, self.connections)
+
+                block_input = [[] for i in connections_to]
+
+                # нужно определить как будут браться данные из initial_data_block
+                # например можно удалять соединение между initial_data_block и стартовым
+                # блоком после того, как стартовые данные были извлечены
+                for connection in connections_to:
+                    if connection.from_block.block_output is not None:
+                        block_input[connection.to_input] = connection.from_block.block_output[connection.from_output]
+                        # удаляем соединение между initial_data_block и стартовым
+                        # блоком после того, как стартовые данные были извлечены
+                        # делаем так, чтобы брать начаьыне данные лишь один раз
+                        # todo открыт вопрос о распределении стартовых данных между стартовыми блоками
+                        if connection.from_block == initial_data_block:
+                            self.connections.remove(connection)
+
+                # входные данные для блока собраны, можно приступать к обработке
+                block.process1(block_input, self.block_configs[block.id])
+
+                # если блок финальный, то возвращаем результат его работы
+                if block == self.final_block:
+                    return block.block_output
+
+            # обработали все текущие блоки. нужно сформировать новую группу.
+            # выбираем те блоки в которые идут связи из текущих блоков
+            next_blocks = []
+            for connection in self.connections:
+                if curr_blocks.__contains__(connection.from_block) and not next_blocks.__contains__(connection.to_block):
+                    next_blocks.append(connection.to_block)
+
+            curr_blocks = next_blocks
 
     # TODO это отдельно обсудим
     def do_modelling(self, params: ComputationParameters) -> BERComputationResult:
@@ -107,13 +249,14 @@ class Model:
                 errs = errs + 1
         return errs
 
+
 # TODO все что ниже пока не надо. Это требует обсуждения . Мне кажется сначала надо разобраться с Block и  Model
 class BlockModulator(Block):
 
     def __init__(self, bits_per_symbol, constellation: np.ndarray):
+        super().__init__()
         self.bits_per_symbol = bits_per_symbol
         self.constellation = constellation
-        pass
 
     def process(self, data: np.ndarray) -> np.ndarray:
         pass
@@ -121,23 +264,24 @@ class BlockModulator(Block):
 
 class BlockChannel(Block):
 
-    def __init__(self, ebn0_db, information_bits_per_symbol):
-        self.ebn0_db = ebn0_db
+    def __init__(self, information_bits_per_symbol):
+        super().__init__()
         self.information_bits_per_symbol = information_bits_per_symbol
 
-    def process(self, data: np.ndarray) -> np.ndarray:
+    def process(self, data: np.ndarray, ebn0_db) -> np.ndarray:
         """Добавляем к сигналу необходимое кол-во шума"""
         pass
 
-    def set_ebn0_db(self, ebn0_db):
-        self.ebn0_db = ebn0_db
+    # def set_ebn0_db(self, ebn0_db):
+    #     self.ebn0_db = ebn0_db
 
-    def calc_noise_variance(self):
+    def calc_noise_variance(self, ebn0_db):
         pass
 
 
 class BlockDemodulator(Block):
     def __init__(self, bits_per_symbol, constellation: np.ndarray, mode='hard'):
+        super().__init__()
         self.bits_per_symbol = bits_per_symbol
         self.constellation = constellation
         self.mode = mode
