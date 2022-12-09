@@ -182,69 +182,27 @@ from interface import *
 # res = model.do_modelling(params)
 # res.plot()
 
-# class Container:
-#     def __init__(self):
-#         self.inputs = [[]]
-#         self.outputs = [[]]
-#
-#     def send(self, output_num, dst, input_num):
-#         dst.inputs[input_num] = self.outputs[output_num]
-#
-#
-# a = Container()
-# b = Container()
-#
-# a.outputs[0] = [1,2,3,5]
-# a.send(0, b, 0)
-# print(b.inputs[0])
-
-
-class TestBlock:
-    def __init__(self, name='my block'):
-        self.name = name
-
-    def method_1(self):
-        print(self.name)
-
-    def method_2(self, x, y):
-        print(y, x)
-
-    def method_3(self, arr: np.ndarray, ebn0: float):
-        s = arr.sum()
-        print(s, ebn0)
-
-    def method_default(self):
-        print('default')
-
-    def test_get_attr(self, name: str, data:List[List], inputs: List[int]):
-        data_for_method = [data[i] for i in inputs]
-        method = getattr(self, name)
-
-        args = []
-        for sub_list in data_for_method:
-            args.append(sub_list.pop())
-
-        method(*args)
-
-
-# b = TestBlock()
-# b.test_get_attr('method_3', [[np.array([1,2,3,4,5])],[0.404]], [0,1])
-
 modulator = QAMModulator()
 awgnc = AWGNChannel(information_bits_per_symbol=modulator.bits_per_symbol)
-demodulator = QAMDemodulator.from_qam_modulator(modulator)
+demodulator = QAMDemodulator.from_qam_modulator(modulator, mode='hard')
 
-connections = []
+info = Block()
+# ebn0_db = 15
+info.block_output = [[15]]
+
+connections = [Connection(modulator, 0, awgnc, 0), Connection(info, 0, awgnc, 1),
+               Connection(awgnc, 0, demodulator, 0), Connection(awgnc, 1, demodulator, 1)]
+
 block_configs = {
-    modulator.id: [MethodCallDescription('process', [0], [0])]
+    modulator.id: [MethodCallDescription('process', inputs=[0], outputs=[0])],
+    awgnc.id: [MethodCallDescription('process', inputs=[0, 1], outputs=[0]),
+               MethodCallDescription('calc_noise_variance', inputs=[1], outputs=[1])],
+    demodulator.id: [MethodCallDescription('process', inputs=[0, 1], outputs=[0])]
 }
 
-model = Model(blocks=[modulator], starting_blocks=[modulator], final_block=modulator,
+model = Model(blocks=[info, modulator, awgnc, demodulator], starting_blocks=[modulator], final_block=demodulator,
               connections=connections, block_configs=block_configs)
 
-# params = ComputationParameters(2500, 5_000_000, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 250_000)
-# res = model.do_modelling(params)
-# res.plot()
 data = np.array([0,0,1,1,0,1,1,0,0,0,1,1,0,1,1,0], dtype=int)
 res = model.process(data)
 print(res)

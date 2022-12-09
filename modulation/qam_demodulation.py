@@ -9,12 +9,12 @@ class QAMDemodulator(BlockDemodulator):
     def __init__(self, bits_per_symbol, constellation, mode='hard'):
         super().__init__(bits_per_symbol, constellation, mode)
 
-    def process(self, data: np.ndarray) -> np.ndarray:
+    def process(self, data: np.ndarray, noise_variance=None) -> np.ndarray:
         if self.mode == 'hard':
             return self.demodulate_hard(data)
         elif self.mode == 'soft':
             # как посчитать дисперсию шума?
-            return self.demodulate_soft(data, self.noise_variance)
+            return self.demodulate_soft(data, noise_variance)
         else:
             raise ValueError("У демодулятора есть только два режима работы: 'hard' и 'soft'")
 

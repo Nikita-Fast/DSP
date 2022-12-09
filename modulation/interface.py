@@ -55,13 +55,6 @@ class Block:
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    # def process(self, data: np.ndarray) -> np.ndarray:
-    #     """можно считать что параметр data это данные со всех входов этого блока, т.е. это список списков.
-    #     Далее пользователь сам настраивает в какие методы подавать данные с каких входов.
-    #
-    #     """
-    #     pass
-
     def process1(self, data: List, config: List[MethodCallDescription]) -> None:
         """Можно считать что параметр data это данные со всех входов этого блока, т.е. это список списков.
         Далее пользователь сам настраивает в какие методы подавать данные с каких входов и на какие выходы
@@ -71,15 +64,14 @@ class Block:
         for method_descr in config:
             max_output_num = max(max_output_num, *method_descr.outputs)
 
-        block_output = [[]]
-        if max_output_num > 0:
-            block_output = [[] for i in range(max_output_num)]
+        block_output = [[] for i in range(max_output_num + 1)]
 
         for method_descr in config:
+            data_copy = copy.deepcopy(data)
             # как в метод вызываемый по имени передать входные аргументы?
             # с помощью * перед списком аргументов
 
-            data_for_method = [data[i] for i in method_descr.inputs]
+            data_for_method = [data_copy[i] for i in method_descr.inputs]
             method = getattr(self, method_descr.method_name)
 
             args = []
@@ -89,10 +81,9 @@ class Block:
             method_output = method(*args)
 
             for output_num in method_descr.outputs:
-                block_output[output_num] = method_output
+                block_output[output_num].append(method_output)
 
         self.block_output = copy.deepcopy(block_output)
-        # return block_output
 
 
 class Connection:
@@ -111,22 +102,14 @@ def get_connections_to(to_block: Block, connections: List[Connection]):
     return proper_connections
 
 
-def get_connections_from(from_block: Block, connections: List[Connection]):
-    proper_connections = []
-    for connection in connections:
-        if connection.from_block == from_block:
-            proper_connections.append(connection)
-    return proper_connections
-
-
 # TODO модель мне кажется должна быть в отдельном модуле
 class Model:
 
-    # TODO блоки могут соединятся в произвольном порядке. Я думаю надо перечень блоков и лист соединений (или еще как то )
+    # TODO блоки могут соединятся в произвольном порядке. Я думаю надо перечень блоков и лист соединений (или еще как то)
     def __init__(self, blocks: List[Block], connections: List[Connection], starting_blocks: List[Block],
                  block_configs: Dict[uuid.UUID, List[MethodCallDescription]], final_block: Block):
         """Может ли стартовых блоков быть несколько?
-        например несколько кодеров, стоящих параллельно, а не последовательно"""
+        Например, несколько кодеров, стоящих параллельно, а не последовательно"""
         self.blocks = blocks
         self.connections = connections
         self.starting_blocks = starting_blocks
@@ -135,16 +118,6 @@ class Model:
 
     # TODO поток данных должен идти в соответствии с листом соединений (что если у блока есть обратная связь )
     def process(self, data: np.ndarray) -> List:
-        """Пропускаем входные данные последовательно через все блоки и возвращаем результат"""
-        # output = np.copy(data)
-        #
-        # i = 0
-        # curr_block = self.blocks[0]
-        # output = curr_block.process(output)
-        #
-        # for block in self.blocks:
-        #     output = block.process(output)
-        # return output
 
         # возможно стоит создать специальный блок, соединенный со стартовыми, который выдаст начальные данные
         initial_data_block = Block()
@@ -219,7 +192,7 @@ class Model:
         for ebn0 in params.ebn0_range:
             bit_errors = 0
             bits_processed = 0
-
+            # todo добавить специальный информационный блок, который будет передавать другим блокам ebn0_db, ... и т.д.
             # Думаю так писать плохо
             channel_block.set_ebn0_db(ebn0)
             demodulator_block.set_noise_variance(channel_block.calc_noise_variance())
@@ -236,7 +209,7 @@ class Model:
 
             ber = bit_errors / bits_processed
             ber_points.append(ber)
-        return BERComputationResult(ber_points.copy(), self.name)
+        return BERComputationResult(ber_points.copy(), 'default_name')
 
     def __gen_bits(self, size):
         return np.random.randint(low=0, high=2, size=size)
@@ -272,9 +245,6 @@ class BlockChannel(Block):
         """Добавляем к сигналу необходимое кол-во шума"""
         pass
 
-    # def set_ebn0_db(self, ebn0_db):
-    #     self.ebn0_db = ebn0_db
-
     def calc_noise_variance(self, ebn0_db):
         pass
 
@@ -285,18 +255,11 @@ class BlockDemodulator(Block):
         self.bits_per_symbol = bits_per_symbol
         self.constellation = constellation
         self.mode = mode
-        self.noise_variance = 1.0
 
-    # Когда демодулятор работает в мягком режиме, ему необходимо знать дисперсию шума. Дисперсию шума может
-    # вычислить метод класса AWGNChannel. Возможно поскольку сейчас при декодировании используется
-    # алгоритм витерби, то можно обойтись без деления llr-ов на дисперсию шума. Но хочется решить эту проблему
-    # заранее. Как в этот блок передавать значение ebn0 и метод по расчету дисперсии шума?
-    def process(self, data: np.ndarray) -> np.ndarray:
-        """Демодулируем символы, возвращая биты в режиме 'hard' и llr-ы в режиме 'soft'"""
+    def process(self, data: np.ndarray, noise_variance=None) -> np.ndarray:
+        """Демодулируем символы, возвращая биты в режиме 'hard' и llr-ы в режиме 'soft'.
+        В мягком режиме требуется передать значение дисперсии шума"""
         pass
-
-    def set_noise_variance(self, noise_var):
-        self.noise_variance = noise_var
 
 
 class Coder:
