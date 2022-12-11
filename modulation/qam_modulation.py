@@ -48,7 +48,9 @@ def sort_constellation_points(complex_numbers):
 class QAMModulator(BlockModulator):
     """Класс описывающий КАМ модулятор"""
 
-    def __init__(self, bits_per_symbol: int = 4, constellation=default_qam_constellations.get_qam_constellation[4]):
+    def __init__(self, bits_per_symbol: int, constellation=None):
+        if constellation is None:
+            constellation = default_qam_constellations.get_qam_constellation[bits_per_symbol]
         super().__init__(bits_per_symbol, constellation)
 
     def process(self, data: np.ndarray) -> np.ndarray:

@@ -1,9 +1,7 @@
 import copy
 from typing import Any, List, Dict
-import numpy as np
-
-# На мой взгляд сторонних библиотек быть не должно. Если есть острая необходимость ее надо аргументировать
 import uuid
+import numpy as np
 
 
 class MethodCallDescription:
@@ -15,7 +13,7 @@ class MethodCallDescription:
         self.outputs = outputs
 
 
-# вход - это список (пример демодулятора data = [[info], [snr]] ) выход - это список (пример блок АБГШ - [[data], [snr]])
+# вход - это список (пример демодулятора data = [[info], [snr]]) выход - это список (пример блок АБГШ - [[data], [snr]])
 # TODO класс должен быть абстрактным
 class Block:
 
@@ -23,16 +21,11 @@ class Block:
         self.block_output = None
         self.id = uuid.uuid4()
 
-    def __eq__(self, other):
-        return self.id == other.id
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def process1(self, data: List, config: List[MethodCallDescription]) -> None:
-        """Можно считать что параметр data это данные со всех входов этого блока, т.е. это список списков.
-        Далее пользователь сам настраивает в какие методы подавать данные с каких входов и на какие выходы
-        подавать результаты с помощью параметра config
+    def execute(self, data: List, config: List[MethodCallDescription]) -> None:
+        """
+        data это данные со всех входов этого блока, т.е. это список списков.
+        Далее пользователь сам настраивает какие методы блока будут вызваны, с каких входов будут взяты
+        данные для работы методов и на какие выходы будут переданы результаты работы методов.
         """
         max_output_num = 0
         for method_descr in config:
@@ -41,23 +34,50 @@ class Block:
         block_output = [[] for i in range(max_output_num + 1)]
 
         for method_descr in config:
-            data_copy = copy.deepcopy(data)
             # как в метод вызываемый по имени передать входные аргументы?
             # с помощью * перед списком аргументов
 
-            data_for_method = [data_copy[i] for i in method_descr.inputs]
+            data_for_method = [data[i] for i in method_descr.inputs]
             method = getattr(self, method_descr.method_name)
 
             args = []
             for sub_list in data_for_method:
-                args.append(sub_list.pop())
+                args.append(sub_list[0])
 
             method_output = method(*args)
 
+            # todo что происходит, когда выходов нет?
             for output_num in method_descr.outputs:
                 block_output[output_num].append(method_output)
 
         self.block_output = copy.deepcopy(block_output)
+
+    def __eq__(self, other):
+        return self.id == other.id
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.id)
+
+
+class InformationBlock(Block):
+    def __init__(self):
+        super().__init__()
+        # Далее нужно перечислить все важные параметры, возникающие во время моделирования
+        self.ebn0_db = None
+
+    def save_info(self, ebn0_db=None):
+        """Этот метод вызывается моделью, чтобы сохранить в данном блоке все необходимые параметры моделирования,
+        которые позже будут переданы в нужные блоки. Предполагается, что у метода может быть большое число аргументов."""
+        self.ebn0_db = ebn0_db
+
+    def get_ebn0_db(self):
+        """Для каждого параметра нужен getter"""
+        if self.ebn0_db is None:
+            raise Exception("Параметр моделирования %s не был сохранен в информационном блоке" % 'ebn0_db')
+        return self.ebn0_db
 
 
 class Connection:
@@ -66,136 +86,6 @@ class Connection:
         self.from_output = from_output
         self.to_block = to_block
         self.to_input = to_input
-
-
-def get_connections_to(to_block: Block, connections: List[Connection]):
-    proper_connections = []
-    for connection in connections:
-        if connection.to_block == to_block:
-            proper_connections.append(connection)
-    return proper_connections
-
-
-# TODO модель мне кажется должна быть в отдельном модуле
-class Model:
-
-    # TODO блоки могут соединятся в произвольном порядке. Я думаю надо перечень блоков и лист соединений (или еще как то)
-    def __init__(self, blocks: List[Block], connections: List[Connection], starting_blocks: List[Block],
-                 block_configs: Dict[uuid.UUID, List[MethodCallDescription]], final_block: Block):
-        """Может ли стартовых блоков быть несколько?
-        Например, несколько кодеров, стоящих параллельно, а не последовательно"""
-        self.blocks = blocks
-        self.connections = connections
-        self.starting_blocks = starting_blocks
-        self.block_configs = block_configs
-        self.final_block = final_block
-
-    # TODO поток данных должен идти в соответствии с листом соединений (что если у блока есть обратная связь )
-    def process(self, data: np.ndarray) -> List:
-
-        # возможно стоит создать специальный блок, соединенный со стартовыми, который выдаст начальные данные
-        initial_data_block = Block()
-        initial_data_block.block_output = [[data]]
-        for starting_block in self.starting_blocks:
-            connection = Connection(initial_data_block, 0, starting_block, 0)
-            self.connections.append(connection)
-
-        curr_blocks = self.starting_blocks
-
-        # как прервать вечный цикл? По-идее тогда, когда финальный блок завершит обработку.
-        # может ли финальных блоков быть несколько?
-        while True:
-            for block in curr_blocks:
-                # нужно получить входные данные для блока от других предыдущих блоков или
-                # получить начальные данные от моделирующей системы
-
-                connections_to = get_connections_to(block, self.connections)
-
-                block_input = [[] for i in connections_to]
-
-                # нужно определить как будут браться данные из initial_data_block
-                # например можно удалять соединение между initial_data_block и стартовым
-                # блоком после того, как стартовые данные были извлечены
-                for connection in connections_to:
-                    if connection.from_block.block_output is not None:
-                        block_input[connection.to_input] = connection.from_block.block_output[connection.from_output]
-                        # удаляем соединение между initial_data_block и стартовым
-                        # блоком после того, как стартовые данные были извлечены
-                        # делаем так, чтобы брать начаьыне данные лишь один раз
-                        # todo открыт вопрос о распределении стартовых данных между стартовыми блоками
-                        if connection.from_block == initial_data_block:
-                            self.connections.remove(connection)
-
-                # входные данные для блока собраны, можно приступать к обработке
-                block.process1(block_input, self.block_configs[block.id])
-
-                # если блок финальный, то возвращаем результат его работы
-                if block == self.final_block:
-                    return block.block_output
-
-            # обработали все текущие блоки. нужно сформировать новую группу.
-            # выбираем те блоки в которые идут связи из текущих блоков
-            next_blocks = []
-            for connection in self.connections:
-                if curr_blocks.__contains__(connection.from_block) and not next_blocks.__contains__(
-                        connection.to_block):
-                    next_blocks.append(connection.to_block)
-
-            curr_blocks = next_blocks
-
-    # TODO это отдельно обсудим
-    # def do_modelling(self, params: ComputationParameters) -> BERComputationResult:
-    #     """Осуществляем моделирование системы с учетом переданных параметров"""
-    #     ber_points = []
-    #
-    #     # как передать в блок, представляющий канал, требуемое значение ebn0?
-    #     # Думаю это полный отстой, как сделать лучше?
-    #     #############################################################
-    #     channel_block = None
-    #     demodulator_block = None
-    #
-    #     for block in self.blocks:
-    #         if isinstance(block, BlockChannel):
-    #             channel_block = block
-    #             break
-    #
-    #     for block in self.blocks:
-    #         if isinstance(block, BlockDemodulator):
-    #             demodulator_block = block
-    #             break
-    #     ###############################################################
-    #     for ebn0 in params.ebn0_range:
-    #         bit_errors = 0
-    #         bits_processed = 0
-    #         # todo добавить специальный информационный блок, который будет передавать другим блокам ebn0_db, ... и т.д.
-    #         # Думаю так писать плохо
-    #         channel_block.set_ebn0_db(ebn0)
-    #         demodulator_block.set_noise_variance(channel_block.calc_noise_variance())
-    #
-    #         while bit_errors < params.errors_threshold and bits_processed < params.max_processed_bits:
-    #             # могут ли входные данные быть не битами?
-    #             input_data = self.__gen_bits(params.bits_process_per_iteration)
-    #             output_data = self.__process(input_data)
-    #             bit_errors += self.__count_errors(input_data, output_data)
-    #             bits_processed += params.bits_process_per_iteration
-    #
-    #             print("ebn0 = %d, bits_processed = %d, errs = %d, appr_BER = %.7f"
-    #                   % (ebn0, bits_processed, bit_errors, (bit_errors / bits_processed)))
-    #
-    #         ber = bit_errors / bits_processed
-    #         ber_points.append(ber)
-    #     return BERComputationResult(ber_points.copy(), 'default_name')
-    #
-    # def __gen_bits(self, size):
-    #     return np.random.randint(low=0, high=2, size=size)
-    #
-    # def __count_errors(self, arr1, arr2):
-    #     """Если длины сравниваемых массивов неравны, то сравниваются куски длинной равной длине меньшего из массивов"""
-    #     errs = 0
-    #     for i in range(min(len(arr1), len(arr2))):
-    #         if arr1[i] != arr2[i]:
-    #             errs = errs + 1
-    #     return errs
 
 
 # TODO все что ниже пока не надо. Это требует обсуждения . Мне кажется сначала надо разобраться с Block и  Model
