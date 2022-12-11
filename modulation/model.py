@@ -7,7 +7,8 @@ from utils import *
 class Model:
 
     # TODO блоки могут соединятся в произвольном порядке. Я думаю надо перечень блоков и лист соединений (или еще как то)
-    def __init__(self, blocks: List[Block],
+    def __init__(self,
+                 blocks: List[Block],
                  connections: List[Connection],
                  starting_blocks: List[Block],
                  block_configs: Dict[Block, List[MethodCallDescription]],
@@ -93,7 +94,7 @@ class Model:
 
                 output = self.process(input_data)
 
-                # todo? добавить спец блок собирающий обработанные данные
+                # todo? добавить спец блок собирающий обработанные данные, чтобы не писать output[0][0]
                 bit_errors += count_errors(input_data, output[0][0])
                 bits_processed += params.bits_process_per_iteration
 

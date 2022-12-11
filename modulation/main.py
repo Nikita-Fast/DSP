@@ -11,7 +11,7 @@ trellis = cc.Trellis(np.array([3]), g_matrix=np.array([[7, 5]]))
 coder_7_5 = ConvCoder(trellis)
 decoder_7_5 = ConvDecoder.from_coder(coder_7_5, 'unquantized')
 
-modulator = QAMModulator(bits_per_symbol=2)
+modulator = QAMModulator(bits_per_symbol=4)
 awgnc = AWGNChannel(information_bits_per_symbol=modulator.bits_per_symbol)
 demodulator = QAMDemodulator.from_qam_modulator(modulator, mode='soft')
 
@@ -41,6 +41,6 @@ model = Model(blocks=[info_block, modulator, awgnc, demodulator, coder_7_5, deco
               block_configs=block_configs,
               info_block=info_block)
 
-p1 = ComputationParameters(2500, 300_000, [0, 1, 2, 3, 4, 5, 6, 7, 8], 50_000)
+p1 = ComputationParameters(2500, 300_000, [0, 1, 2, 3, 4, 5, 6, 7], 50_000)
 res = model.do_modelling(p1)
 res.plot()
