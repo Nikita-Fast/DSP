@@ -188,14 +188,15 @@ def count_bit_errors(arr1, arr2):
 
 trellis = cc.Trellis(np.array([3]), g_matrix=np.array([[7, 5]]))
 coder_7_5 = ConvCoder(trellis)
-decoder_7_5 = ConvDecoder.from_coder(coder_7_5, mode='unquantized')
+decoder_7_5 = ConvDecoder.from_coder(coder_7_5, 'unquantized')
+# 'unquantized'
 
 modulator = QAMModulator()
 awgnc = AWGNChannel(information_bits_per_symbol=modulator.bits_per_symbol)
 demodulator = QAMDemodulator.from_qam_modulator(modulator, mode='soft')
 
 info = Block()
-ebn0_db = 6
+ebn0_db = 10
 info.block_output = [[ebn0_db]]
 
 connections = [Connection(coder_7_5, 0, modulator, 0),
