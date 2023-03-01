@@ -57,10 +57,13 @@ class MainWindow(QWidget):
         self.combo_box_block_type = QComboBox()
         self.button_create_block = QPushButton('Create block!', self)
         self.button_create_block.clicked.connect(self.create_block_on_btn_click)
+        self.button_create_objects = QPushButton('ПЫЩ!')
+        self.button_create_objects.clicked.connect(print('Кнопка ПЫЩ еще не доработана!'))
 
         vbox = QVBoxLayout()
         vbox.addWidget(self.combo_box_block_type)
         vbox.addWidget(self.button_create_block)
+        vbox.addWidget(self.button_create_objects)
         vbox.addStretch(1)
 
         self.group_box.setLayout(vbox)
@@ -95,5 +98,5 @@ class MainWindow(QWidget):
         # todo если нажать на кнопку, то информационные окно не закроются
         a = [x for x in self.scene.items() if CBlock in x.__class__.__bases__]
         for x in a:
-            if x.info_window is not None:
-                x.info_window.close()
+            if x.interface is not None:
+                x.interface.close()
