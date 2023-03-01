@@ -30,9 +30,11 @@ class CBlock(QGraphicsRectItem):
         self.update_ports_position()
 
         # info_window
-        self.info_window = InfoWindow()
-        self.info_window.set_text('')
-        self.info_window.setWindowTitle(self.who_i_am())
+        self.interface = QWidget()
+        self.interface.setWindowTitle(self.who_i_am())
+        # self.info_window = InfoWindow()
+        # self.info_window.set_text('')
+        # self.info_window.setWindowTitle(self.who_i_am())
 
     @staticmethod
     def who_i_am():
@@ -48,8 +50,9 @@ class CBlock(QGraphicsRectItem):
             self.scene().removeItem(self)
 
     def mouseDoubleClickEvent(self, event: PySide2.QtWidgets.QGraphicsSceneMouseEvent) -> None:
-        self.info_window.set_text(self.who_i_am())
-        self.info_window.show()
+        # self.info_window.set_text(self.who_i_am())
+        # self.info_window.show()
+        self.interface.show()
 
     def itemChange(self, change: PySide2.QtWidgets.QGraphicsItem.GraphicsItemChange, value: typing.Any) -> typing.Any:
         if change == QGraphicsItem.ItemScenePositionHasChanged and self.scene() is not None:

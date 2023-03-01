@@ -38,8 +38,9 @@ class Port(QGraphicsRectItem):
 
     def remove_all_connections(self):
         for c in self.connections:
+            c.from_port.connections.remove(c)
+            c.to_port.connections.remove(c)
             self.scene().removeItem(c)
-        self.connections.clear()
 
     def update_connections(self):
         for c in self.connections:
